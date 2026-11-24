@@ -669,46 +669,103 @@ function viewAssignment(a) {
   });
 }
 
+function cdAnswerControl(group, number, field) {
+  const name = 'cd-answer-' + field;
+  const label = 'Answer ' + number;
+  if (group.choices.includes('NOT GIVEN')) {
+    return '<fieldset class="cd-choice-set" aria-label="' + label + '">' + group.choices.map(choice =>
+      '<label><input type="radio" name="' + name + '" value="' + esc(choice) + '"><span>' +
+      esc(choice === 'NOT GIVEN' ? 'Not Given' : choice[0] + choice.slice(1).toLowerCase()) + '</span></label>'
+    ).join('') + '</fieldset>';
+  }
+  if (group.choices.length) return '<select class="cd-answer-field" name="' + name + '" aria-label="' + label +
+    '"><option value="">Select an answer</option>' + group.choices.map(choice => '<option>' + esc(choice) + '</option>').join('') + '</select>';
+  return '<input class="cd-answer-field" name="' + name + '" aria-label="' + label +
+    '" maxlength="500" autocomplete="off" placeholder="Type your answer">';
+}
+
+function renderCdGroup(group, offset) {
+  const anchor = /^(\d{1,2})[.)]?\s+(?=\S)|\(?(\d{1,2})\)?\s*(?:_{3,}|[.…]{3,})/gm;
+  const matches = [];
+  let next = 0;
+  if (!group.unordered) {
+    for (const match of group.text.matchAll(anchor)) {
+      const number = Number(match[1] || match[2]);
+      const index = group.numbers.indexOf(number, next);
+      if (index === -1) continue;
+      matches.push({ match, number, index });
+      next = index + 1;
+    }
+  }
+  const prompt = (text, className) => text.trim() ? '<div class="' + className + '">' + esc(text.trim()) + '</div>' : '';
+  const rows = matches.map(({ match, number, index }, i) => {
+    const body = group.text.slice(match.index + match[0].length, matches[i + 1]?.match.index);
+    return '<div class="cd-question-row"><span class="cd-question-number">' + number + '</span><div>' +
+      (match[2] ? '<span class="cd-blank">Blank ' + number + '</span>' : prompt(body, 'cd-question-text')) +
+      cdAnswerControl(group, number, offset + index) + (match[2] ? prompt(body, 'cd-question-text cd-continuation') : '') + '</div></div>';
+  });
+  const remaining = group.numbers.flatMap((number, index) => matches.some(item => item.index === index) ? [] :
+    ['<div class="cd-question-row"><span class="cd-question-number">' + number + '</span><div>' +
+      cdAnswerControl(group, number, offset + index) + '</div></div>']);
+  return '<div class="cd-question-group">' +
+    prompt(group.text.slice(0, matches.length ? matches[0].match.index : group.text.length), 'cd-group-instructions') +
+    rows.join('') + remaining.join('') + '</div>';
+}
+
 function takeCdReading(assignment) {
   const tabs = assignment.cd.map((_, index) => '<button type="button" class="btn light" data-cd-part="' + index +
     '">Passage ' + (index + 1) + '</button>').join('');
-  let answerIndex = 0;
+  let answerCount = 0;
   const sections = assignment.cd.map((section, index) => '<section class="cd-part" ' + (index ? 'hidden' : '') + '>' +
-    '<div class="cd-passage" tabindex="0" aria-label="Reading passage"><h3>' + esc(section.title) + '</h3><div>' +
-    esc(section.passage) + '</div></div><div class="cd-questions" tabindex="0" aria-label="Questions">' +
-    section.groups.map(group => '<div class="cd-question-group"><div class="cd-question-text">' + esc(group.text) +
-      '</div><div class="answer-grid">' + group.numbers.map(number => {
-        const field = 'cd-answer-' + answerIndex++;
-        return '<label><span id="' + field + '-label">Answer ' + number + '</span>' +
-          (group.choices.length ? '<select id="' + field + '" name="' + field + '" aria-labelledby="' + field + '-label">' +
-          '<option value="">Select an answer</option>' + group.choices.map(choice => '<option>' + esc(choice) + '</option>').join('') + '</select>'
-          : '<input id="' + field + '" name="' + field + '" maxlength="500" autocomplete="off">') + '</label>';
-      }).join('') + '</div></div>').join('') + '</div></section>').join('');
-  const numbers = assignment.cd.flatMap((section, index) => section.groups.flatMap(group =>
-    group.numbers.map(number => [index, number])));
-  openModal(assignment.title, '<form class="cd-test"><nav class="cd-tabs" aria-label="Passages">' + tabs + '</nav>' + sections +
-    '<nav class="cd-numbers" aria-label="Question numbers">' + numbers.map(([part, number], index) =>
-      '<button type="button" class="btn light" data-cd-part="' + part + '" data-cd-answer="' + index + '">' + number + '</button>').join('') +
-    '</nav>' + submitButton('Submit assignment') + '</form>', true);
+    '<div class="cd-passage" tabindex="0" aria-label="Reading passage"><h3>' + esc(section.title) +
+    '</h3><div class="cd-passage-copy">' + esc(section.passage) + '</div></div>' +
+    '<div class="cd-questions" tabindex="0" aria-label="Questions">' + section.groups.map(group => {
+      const markup = renderCdGroup(group, answerCount);
+      answerCount += group.numbers.length;
+      return markup;
+    }).join('') + '</div></section>').join('');
+  openModal(assignment.title, '<form class="cd-test"><div class="cd-tools">' +
+    '<a class="cd-telegram" href="https://t.me/walker_ielts" target="_blank" rel="noopener">' + providerIcons.telegram + 'Walker IELTS on Telegram</a>' +
+    '<div class="cd-utility"><label>Text size<select name="text-size"><option value="standard">Standard</option><option value="large">Large</option></select></label>' +
+    '<button type="button" class="btn light" data-highlight>Highlight selection</button><button type="button" class="btn light" data-clear-highlight>Clear highlights</button></div></div>' +
+    '<nav class="cd-tabs" aria-label="Passages">' + tabs + '</nav>' + sections +
+    '<div class="cd-submit"><span class="cd-progress" role="status">0 / ' + answerCount + ' answered</span>' +
+    submitButton('Submit assignment') + '</div></form>', true);
+  const form = modal.querySelector('form');
   const panels = [...modal.querySelectorAll('.cd-part')];
   const tabButtons = [...modal.querySelectorAll('.cd-tabs button')];
-  const questionButtons = [...modal.querySelectorAll('.cd-numbers button')];
   function select(part) {
     panels.forEach((panel, index) => { panel.hidden = index !== part; });
     tabButtons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === part)));
   }
   select(0);
-  for (const button of [...tabButtons, ...questionButtons]) button.onclick = () => {
-    select(Number(button.dataset.cdPart));
-    if (button.dataset.cdAnswer !== undefined) modal.querySelector('#cd-answer-' + button.dataset.cdAnswer).focus();
+  for (const button of tabButtons) button.onclick = () => select(Number(button.dataset.cdPart));
+  form.elements['text-size'].onchange = event => form.classList.toggle('cd-large', event.target.value === 'large');
+  const highlight = form.querySelector('[data-highlight]');
+  highlight.onmousedown = event => event.preventDefault();
+  highlight.onclick = () => {
+    const copy = form.querySelector('.cd-part:not([hidden]) .cd-passage-copy');
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    if (!copy.contains(range.startContainer) || !copy.contains(range.endContainer)) return;
+    const mark = document.createElement('mark');
+    mark.append(range.extractContents());
+    range.insertNode(mark);
+    selection.removeAllRanges();
   };
-  questionButtons.forEach((button, index) => {
-    const field = modal.querySelector('#cd-answer-' + index);
-    field.oninput = () => button.classList.toggle('cd-answered', Boolean(field.value.trim()));
+  form.querySelector('[data-clear-highlight]').onclick = () => {
+    const copy = form.querySelector('.cd-part:not([hidden]) .cd-passage-copy');
+    copy.querySelectorAll('mark').forEach(mark => mark.replaceWith(...mark.childNodes));
+    copy.normalize();
+  };
+  const readAnswers = values => Array.from({ length: answerCount }, (_, index) => values.get('cd-answer-' + index) || '');
+  form.addEventListener('input', () => {
+    const count = readAnswers(new FormData(form)).filter(answer => answer.trim()).length;
+    form.querySelector('.cd-progress').textContent = count + ' / ' + answerCount + ' answered';
   });
   bindForm(modal, async values => {
-    const answers = numbers.map((_, index) => values.get('cd-answer-' + index));
-    await api('assignments/' + assignment.id + '/submit', { answers });
+    await api('assignments/' + assignment.id + '/submit', { answers: readAnswers(values) });
     dashboard = await api('dashboard');
     navigate('/results/' + assignment.id + '/' + user.id, { replace: true });
   });
