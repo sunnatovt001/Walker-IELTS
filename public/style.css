@@ -18,9 +18,9 @@ svg{display:block;flex-shrink:0}
 .logo{width:37px;height:37px;display:grid;place-items:center;background:var(--green);color:#17251a;border-radius:11px}
 .label{font-size:10px;letter-spacing:1.55px;font-weight:800;margin:39px 12px 12px;color:#a0b0a7}
 .nav{display:grid;gap:5px}
-.nav button,.logout{display:flex;align-items:center;gap:12px;border:0;background:transparent;color:#bdc9c0;text-align:left;padding:12px;border-radius:9px;font-size:14px;font-weight:600;width:100%}
-.nav button:hover,.logout:hover{background:#24352c;color:white}
-.nav button.active{background:var(--green);color:#19271a}
+.nav a,.logout{display:flex;align-items:center;gap:12px;border:0;background:transparent;color:#bdc9c0;text-align:left;padding:12px;border-radius:9px;font-size:14px;font-weight:600;width:100%}
+.nav a:hover,.logout:hover{background:#24352c;color:white}
+.nav a.active{background:var(--green);color:#19271a}
 .sidebar-bottom{margin-top:auto}
 .profile{border-top:1px solid #304037;padding:17px 4px 0;display:flex;align-items:center;gap:9px}
 .avatar{width:36px;height:36px;border-radius:50%;background:#d9ebd0;color:#30553d;display:grid;place-items:center;font-weight:800;flex:none;font-size:12px}
@@ -74,8 +74,8 @@ svg{display:block;flex-shrink:0}
 .pill.pending{background:#fff1d9;color:#745018}
 .empty{padding:24px;color:var(--muted);font-size:14px}
 .filters{display:flex;gap:7px;flex-wrap:wrap;margin:16px 0}
-.filters button{background:white;border:1px solid var(--line);border-radius:24px;padding:7px 12px;color:var(--ink);font-size:13px}
-.filters button.active{background:#1b3628;color:#fff;border-color:#1b3628}
+.filters a{background:white;border:1px solid var(--line);border-radius:24px;padding:7px 12px;color:var(--ink);font-size:13px}
+.filters a.active{background:#1b3628;color:#fff;border-color:#1b3628}
 dialog{width:min(640px,calc(100% - 22px));border:1px solid var(--line);border-radius:15px;margin:auto;padding:0;color:var(--ink);max-height:90vh;box-shadow:0 18px 80px #0d1b1850}
 dialog::backdrop{background:#102218a0}
 .modal-inner{padding:23px}
@@ -102,7 +102,9 @@ input[type=file]{max-width:100%}
 .login-box h2{font-size:30px;letter-spacing:-1px}
 .demo-buttons{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:960px){.shell{grid-template-columns:190px minmax(0,1fr)}.top,.content{padding-left:22px;padding-right:22px}.hero-art{opacity:.6}}
-@media(max-width:700px){.shell{display:block}.sidebar{height:auto;min-height:0;position:static;padding:12px;gap:12px}.sidebar .label{display:none}.nav{display:flex;flex-wrap:wrap;gap:4px}.nav button{width:auto;padding:7px 8px;font-size:12px;gap:5px}.nav svg{width:15px;height:15px}.sidebar-bottom{position:absolute;right:12px;top:11px}.profile{border:0;padding:0}.profile strong,.profile small,.profile .avatar{display:none}.top{height:49px}.content{padding:17px 12px 32px}.hero{padding:21px 17px;min-height:184px}.hero-art{right:7%;opacity:.22}.stats{gap:6px;margin-top:10px}.stat{padding:9px;gap:5px}.stat .tile-icon{display:none}.stat small{font-size:10px}.stat strong{font-size:20px}.tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.row{padding:10px;gap:6px}.row .btn{padding:7px 8px}.login{grid-template-columns:1fr}.login-aside{min-height:240px;gap:25px}.login-main{padding:25px 18px}.headline h1{font-size:24px}}
+@media(max-width:700px){.shell{display:block}.sidebar{height:auto;min-height:0;position:static;padding:12px;gap:12px}.sidebar .label{display:none}.nav{display:flex;flex-wrap:wrap;gap:4px}.nav a{width:auto;padding:7px 8px;font-size:12px;gap:5px}.nav svg{width:15px;height:15px}.sidebar-bottom{position:absolute;right:12px;top:11px}.profile{border:0;padding:0}.profile strong,.profile small,.profile .avatar{display:none}.top{height:49px}.content{padding:17px 12px 32px}.hero{padding:21px 17px;min-height:184px}.hero-art{right:7%;opacity:.22}.stats{gap:6px;margin-top:10px}.stat{padding:9px;gap:5px}.stat .tile-icon{display:none}.stat small{font-size:10px}.stat strong{font-size:20px}.tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.row{padding:10px;gap:6px}.row .btn{padding:7px 8px}.login{grid-template-columns:1fr}.login-aside{min-height:240px;gap:25px}.login-main{padding:25px 18px}.headline h1{font-size:24px}}
 #kind-fields{display:grid;gap:12px}
 .invite-code{display:grid;gap:7px;margin-top:12px;font-weight:700;font-size:13px}
 .invite-code input{font-family:monospace}
+
+.nav a,.filters a,.skill{text-decoration:none}
