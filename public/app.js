@@ -137,7 +137,7 @@ function landing() {
     ['Speaking', 'Record your response and upload it for your teacher to review.', 'Return to Results to see your score and feedback.']
   ];
   document.title = 'Walker IELTS | Practice and progress';
-  app.innerHTML = '<div class="landing"><header class="landing-header"><div class="landing-width landing-bar">' +
+  app.innerHTML = '<div class="landing"><img class="landing-desk" src="/landing-desk.webp" width="1200" height="900" alt="" fetchpriority="high"><header class="landing-header"><div class="landing-width landing-bar">' +
     '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brand + '</a>' +
     '<nav aria-label="Main navigation"><a href="#skills" class="landing-nav-link">Explore skills</a>' +
     link(entry, user ? 'Dashboard' : 'Sign in', 'light', 'arrow') + '</nav></div></header>' +
@@ -146,7 +146,7 @@ function landing() {
     '<p>Complete your assignments, get feedback from your teacher, and track your results across all four IELTS skills.</p>' +
     '<div class="landing-actions">' + link(entry, primary, 'accent', 'arrow') +
     '<a class="landing-secondary" href="#skills">Explore skills ' + icon('next', 15) + '</a></div></div>' +
-    '<div class="landing-preview"><img class="landing-desk" src="/landing-desk.webp" width="1200" height="900" alt="" fetchpriority="high">' +
+    '<div class="landing-preview">' +
     '<div class="landing-preview-card"><div class="landing-preview-header">' +
     tile('tasks', 'blue-soft') + '<div><h2>Assignments</h2><p>Example workspace</p></div></div>' +
     '<div class="landing-preview-rows">' +
