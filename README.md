@@ -49,6 +49,14 @@ Google OAuth client’ning **Authorized redirect URIs** ro‘yxatiga `https://wa
 
 Google tasdiqlagan Gmail yoki Google Workspace emaili mavjud Walker hisobiga mos kelsa, hisob avtomatik bog‘lanadi. Boshqa email va Telegram orqali birinchi marta kirishda Walker hisobining o‘z email-paroli bilan bog‘lash talab qilinadi. Yangi o‘quvchi avval ustoz bergan taklif kodi orqali Walker hisobini ochadi. Login formasidagi parol Walker IELTS hisobiga tegishli.
 
+## Admin panel
+
+Vercel → **Settings → Environment Variables** bo‘limida **Production** uchun `WALKER_ADMIN_PASSWORD` ni (12–200 belgi) maxfiy qiymat sifatida qo‘shing va `main` deployini qayta ishga tushiring. Admin username standarti `walkerielts`. Birinchi ishga tushirishda uni `WALKER_ADMIN_USERNAME` bilan belgilash mumkin. Lokal sinovda shu o‘zgaruvchilarni server muhitiga bering.
+
+`/admin` alohida login ishlatadi. **Change password** orqali parol almashtirilsa, yangi parol bazada xesh ko‘rinishida saqlanadi va boshqa admin sessiyalari tugaydi. Vercel’dagi qiymat faqat boshlang‘ich sozlash uchun ishlatiladi. Admin paroli ustoz yoki o‘quvchining kabinet parolidan alohida.
+
+Testlarni faqat admin qo‘shishi, tahrirlashi va o‘chirishi mumkin. Ustoz avvalgidek o‘quvchilarni taklif qiladi va natijalarni baholaydi. Javoblar topshirilgach test turi va javob kaliti saqlanadi, sarlavha, muddat va kontentni tahrirlash mumkin. O‘chirish test va uning topshirilgan javoblarini bazadan olib tashlaydi.
+
 ## Vazifalar va baholash
 
 - **Reading va Listening.** Ustoz PDF fayl va javob kalitini yuklaydi. Sayt PDF matnini chiqarib, faylni va raqamlangan javob maydonlarini vazifaga biriktiradi. Skanerlangan PDF faylning o‘zi ochiladi. Listening uchun audio ham yuklanadi. Kalitda har qator bitta savolga mos keladi va muqobil javoblar `|` orqali ko‘rsatiladi.

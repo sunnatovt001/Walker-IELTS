@@ -33,6 +33,15 @@ const schema = `
   CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY, user INTEGER REFERENCES users(id), expires INTEGER
   );
+  CREATE TABLE IF NOT EXISTS admin_account (
+    id INTEGER PRIMARY KEY CHECK(id=1), username TEXT NOT NULL, password TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS admin_sessions (
+    key TEXT PRIMARY KEY, password_version TEXT NOT NULL, expires INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS admin_attempts (
+    key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS oauth_states (
     key TEXT PRIMARY KEY, provider TEXT NOT NULL, verifier TEXT NOT NULL, next TEXT NOT NULL, expires INTEGER NOT NULL
   );
@@ -279,6 +288,136 @@ async function handleOAuth(req, res, url, providerName, phase, token) {
   return redirect(res, oauthLoginPath(flow.next, 'link'));
 }
 
+const adminAge = 8 * 60 * 60;
+
+function passwordMatches(hash, password) {
+  if (typeof password !== 'string' || password.length > 200) return false;
+  const computed = passwordHash(password, hash?.split(':')[0] || 'invalid-user');
+  return Boolean(hash && timingSafeEqual(Buffer.from(computed), Buffer.from(hash)));
+}
+
+async function adminSession(res, hash) {
+  const token = oauthToken();
+  const version = oauthDigest(hash);
+  await run('DELETE FROM admin_sessions WHERE expires<=?', Date.now());
+  const result = await run('INSERT INTO admin_sessions SELECT ?,?,? FROM admin_account WHERE id=1 AND password=?',
+    oauthDigest(token), version, Date.now() + adminAge * 1000, hash);
+  if (!result.rowsAffected) fail(409, 'The password changed. Sign in again.');
+  setCookie(res, 'walker_admin', token, adminAge);
+}
+
+async function saveAssignment(form, owner, existing) {
+  const objective = ['Reading', 'Listening'].includes(form.kind);
+  const title = String(form.title || '').trim();
+  const due = String(form.due || '');
+  const level = form.kind === 'Reading' && form.level === 'General' ? 'General' : 'Academic';
+  if (!kinds.includes(form.kind) || !title || title.length > 180 || (due && !/^\d{4}-\d{2}-\d{2}$/.test(due))) fail(400, 'Check the assignment details.');
+  const preserveFiles = existing?.kind === form.kind;
+  const newPdf = objective ? file(form.pdf, 'pdf') : null;
+  const pdf = objective ? newPdf || (preserveFiles ? existing.pdf : null) : null;
+  const newAudio = form.kind === 'Listening' ? file(form.audio, 'audio') : null;
+  const audio = form.kind === 'Listening' ? newAudio || (preserveFiles ? existing.audio : null) : null;
+  const audioType = newAudio ? form.audio.type : audio ? existing.audio_type : null;
+  if (vercel && (pdf?.byteLength || 0) + (audio?.byteLength || 0) > fileLimit) fail(413, 'The PDF and audio together must be at most 3 MB.');
+  // Older demo and imported assignments can contain an inline text passage.
+  if (objective && !pdf && !preserveFiles) fail(400, 'Upload a PDF file.');
+  if (form.kind === 'Listening' && !audio) fail(400, 'Upload the listening audio file.');
+  const keys = objective ? String(form.keys || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean) : [];
+  if (objective && (!keys.length || keys.length > 40 || keys.some(line => !line.split('|').some(normalize)))) fail(400, 'Enter 1–40 answers in the answer key, one per line.');
+  const encodedKeys = JSON.stringify(keys);
+  const prompt = objective ? (newPdf ? await extractPDF(newPdf) : existing.prompt) : String(form.prompt || '').trim();
+  if (!objective && (!prompt || prompt.length > 40000)) fail(400, 'Enter the assignment prompt.');
+  const values = [form.kind, title, prompt, due || null, level, encodedKeys, pdf, audio, audioType];
+  if (!existing) {
+    const result = await run('INSERT INTO assignments(teacher,kind,title,prompt,due,level,keys,pdf,audio,audio_type) VALUES (?,?,?,?,?,?,?,?,?,?)', owner.id, ...values);
+    return Number(result.lastInsertRowid);
+  }
+  const gradingChanged = existing.kind !== form.kind || existing.keys !== encodedKeys || existing.level !== level;
+  const result = await run(`UPDATE assignments SET kind=?,title=?,prompt=?,due=?,level=?,keys=?,pdf=?,audio=?,audio_type=?
+    WHERE id=? AND teacher=? AND (?=0 OR NOT EXISTS (SELECT 1 FROM submissions WHERE assignment=assignments.id))`,
+    ...values, existing.id, owner.id, Number(gradingChanged));
+  if (!result.rowsAffected) fail(409, 'The assignment was removed, or its skill, reading type or answer key is locked by submissions.');
+  return existing.id;
+}
+
+async function handleAdmin(req, res, path) {
+  const password = process.env.WALKER_ADMIN_PASSWORD;
+  let account = await get('SELECT username,password FROM admin_account WHERE id=1');
+  if (!account && !validPassword(password)) fail(503, 'Set WALKER_ADMIN_PASSWORD to enable admin sign-in.');
+  const token = oauthCookie(req, 'walker_admin');
+  const key = token ? oauthDigest(token) : '';
+  const admin = account && key && await get('SELECT key FROM admin_sessions WHERE key=? AND password_version=? AND expires>?',
+    key, oauthDigest(account.password), Date.now());
+  if (path === '/api/admin/session' && req.method === 'GET') return send(res, { signedIn: Boolean(admin), maxUpload: fileLimit });
+  if (path === '/api/admin/login' && req.method === 'POST') {
+    const form = await body(req);
+    const now = Date.now();
+    const address = vercel ? req.headers['x-vercel-forwarded-for'] : req.socket.remoteAddress;
+    const rateKey = oauthDigest(String(address || 'unknown'));
+    const attempt = await get(`INSERT INTO admin_attempts VALUES (?,1,?)
+      ON CONFLICT(key) DO UPDATE SET count=CASE WHEN expires<=? THEN 1 ELSE count+1 END,
+      expires=CASE WHEN expires<=? THEN excluded.expires ELSE expires END RETURNING count`,
+      rateKey, now + 15 * 60 * 1000, now, now);
+    if (attempt.count > 10) fail(429, 'Too many attempts. Try again in 15 minutes.');
+    if (!account) {
+      await run('INSERT OR IGNORE INTO admin_account VALUES (1,?,?)',
+        process.env.WALKER_ADMIN_USERNAME || 'walkerielts', passwordHash(password));
+      account = await get('SELECT username,password FROM admin_account WHERE id=1');
+    }
+    if (!passwordMatches(account.password, form.password) || form.username !== account.username) fail(401, 'Incorrect username or password.');
+    await run('DELETE FROM admin_attempts WHERE key=? OR expires<=?', rateKey, now);
+    if (key) await run('DELETE FROM admin_sessions WHERE key=?', key);
+    await adminSession(res, account.password);
+    return send(res, {});
+  }
+  if (!admin) fail(401, 'Sign in to the admin panel.');
+  if (path === '/api/admin/logout' && req.method === 'POST') {
+    await run('DELETE FROM admin_sessions WHERE key=?', key);
+    setCookie(res, 'walker_admin', '', 0);
+    return send(res, {});
+  }
+  if (path === '/api/admin/password' && req.method === 'POST') {
+    const form = await body(req);
+    if (!passwordMatches(account.password, form.current)) fail(400, 'Incorrect current password.');
+    if (!validPassword(form.password) || form.password === form.current) fail(400, 'Choose a different password with 12–200 characters.');
+    const hash = passwordHash(form.password);
+    if (!(await run('UPDATE admin_account SET password=? WHERE id=1 AND password=?', hash, account.password)).rowsAffected) {
+      fail(409, 'The password changed. Sign in again.');
+    }
+    await adminSession(res, hash);
+    return send(res, {});
+  }
+
+  const owner = teacherEmail
+    ? await get('SELECT id FROM users WHERE email=? AND teacher IS NULL', teacherEmail)
+    : await get('SELECT id FROM users WHERE teacher IS NULL ORDER BY id LIMIT 1');
+  if (!owner) fail(503, 'The teacher workspace is unavailable.');
+  if (path === '/api/admin/assignments') {
+    if (req.method === 'GET') {
+      const assignments = await all('SELECT ' + assignmentColumns +
+        ', (SELECT COUNT(*) FROM submissions WHERE assignment=assignments.id) AS submissionCount FROM assignments WHERE teacher=? ORDER BY id DESC', owner.id);
+      return send(res, assignments.map(assignment => ({ ...assignment, keys: JSON.parse(assignment.keys) })));
+    }
+    if (req.method === 'POST') return send(res, { id: await saveAssignment(await body(req), owner) }, 201);
+  }
+  const change = /^\/api\/admin\/assignments\/(\d+)\/(edit|delete)$/.exec(path);
+  if (change && req.method === 'POST') {
+    const id = Number(change[1]);
+    if (change[2] === 'edit') {
+      const existing = await get('SELECT * FROM assignments WHERE id=? AND teacher=?', id, owner.id);
+      if (!existing) fail(404, 'Assignment not found.');
+      return send(res, { id: await saveAssignment(await body(req), owner, existing) });
+    }
+    const results = await db.batch([
+      { sql: 'DELETE FROM submissions WHERE assignment IN (SELECT id FROM assignments WHERE id=? AND teacher=?)', args: [id, owner.id] },
+      { sql: 'DELETE FROM assignments WHERE id=? AND teacher=?', args: [id, owner.id] }
+    ], 'write');
+    if (!results[1].rowsAffected) fail(404, 'Assignment not found.');
+    return send(res, {});
+  }
+  fail(404, 'Page not found.');
+}
+
 export async function handler(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
@@ -290,7 +429,7 @@ export async function handler(req, res) {
       : url.pathname;
     const post = req.method === 'POST';
     if (post && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) fail(415, 'Send a JSON request.');
-    const pageRoute = /^\/(?:login|dashboard|assignments(?:\/(?:listening|reading|writing|speaking|\d+))?|students(?:\/\d+)?|results(?:\/\d+\/\d+)?)\/?$/.test(path);
+    const pageRoute = /^\/(?:admin|login|dashboard|assignments(?:\/(?:listening|reading|writing|speaking|\d+))?|students(?:\/\d+)?|results(?:\/\d+\/\d+)?)\/?$/.test(path);
     const asset = publicFiles[pageRoute ? '/' : path];
     if (req.method === 'GET' && Array.isArray(asset)) {
       const [name, contentType] = asset;
@@ -298,6 +437,7 @@ export async function handler(req, res) {
       return;
     }
     await databaseReady();
+    if (path.startsWith('/api/admin/')) return await handleAdmin(req, res, path);
     const token = cookie(req);
     const oauthRoute = /^\/api\/oauth\/(google|telegram)\/(start|callback)$/.exec(path);
     if (oauthRoute) return await handleOAuth(req, res, url, oauthRoute[1], oauthRoute[2], token);
@@ -312,8 +452,7 @@ export async function handler(req, res) {
       const { email, password, connectProvider } = await body(req);
       const user = await get('SELECT * FROM users WHERE email=?', emailAddress(email));
       if (typeof password !== 'string' || password.length > 200) fail(400, 'Invalid password format.');
-      const computed = passwordHash(password, user?.password.split(':')[0] || 'invalid-user');
-      if (!user || !timingSafeEqual(Buffer.from(computed), Buffer.from(user.password))) fail(401, 'Incorrect email or password.');
+      if (!passwordMatches(user?.password, password)) fail(401, 'Incorrect email or password.');
       if (connectProvider) {
         const ticket = oauthCookie(req, 'walker_link');
         if (!ticket) fail(400, 'This connection has expired. Start again with your sign-in provider.');
@@ -376,25 +515,7 @@ export async function handler(req, res) {
       `, address, name.trim(), user.id, invitationHash(code), expires);
       return send(res, { email: address, code }, 201);
     }
-    if (path === '/api/assignments' && post) {
-      requireTeacher(user);
-      const form = await body(req);
-      const objective = ['Reading', 'Listening'].includes(form.kind);
-      const title = String(form.title || '').trim();
-      const due = String(form.due || '');
-      if (!kinds.includes(form.kind) || !title || title.length > 180 || (due && !/^\d{4}-\d{2}-\d{2}$/.test(due))) fail(400, 'Check the assignment details.');
-      const pdf = objective ? file(form.pdf, 'pdf') : null;
-      const audio = form.kind === 'Listening' ? file(form.audio, 'audio') : null;
-      if (vercel && (pdf?.length || 0) + (audio?.length || 0) > fileLimit) fail(413, 'The PDF and audio together must be at most 3 MB.');
-      if (objective && !pdf) fail(400, 'Upload a PDF file.');
-      if (form.kind === 'Listening' && !audio) fail(400, 'Upload the listening audio file.');
-      const keys = objective ? String(form.keys || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean) : [];
-      if (objective && (!keys.length || keys.length > 40 || keys.some(line => !line.split('|').some(normalize)))) fail(400, 'Enter 1–40 answers in the answer key, one per line.');
-      const prompt = objective ? await extractPDF(pdf) : String(form.prompt || '').trim();
-      if (!objective && (!prompt || prompt.length > 40000)) fail(400, 'Enter the assignment prompt.');
-      const result = await run('INSERT INTO assignments(teacher,kind,title,prompt,due,level,keys,pdf,audio,audio_type) VALUES (?,?,?,?,?,?,?,?,?,?)', user.id, form.kind, title, prompt, due || null, form.level === 'General' ? 'General' : 'Academic', JSON.stringify(keys), pdf, audio, audio ? form.audio.type : null);
-      return send(res, { id: Number(result.lastInsertRowid) }, 201);
-    }
+    if (path === '/api/assignments' && post) fail(403, 'Manage assignments in the admin panel.');
     const attachment = /^\/api\/assignments\/(\d+)\/(pdf|audio)$/.exec(path);
     if (attachment && !post) {
       const column = attachment[2];
@@ -424,8 +545,10 @@ export async function handler(req, res) {
         response = String(form.response || '').trim();
         if (!response || response.length > 40000) fail(400, 'Enter your writing response.');
       }
-      const result = await run('INSERT OR IGNORE INTO submissions(assignment,student,response,audio,audio_type,raw,band) VALUES (?,?,?,?,?,?,?)', assignment.id, user.id, response, audio, audio ? form.audio.type : null, raw, band);
-      if (!result.rowsAffected) fail(409, 'You have already submitted this assignment.');
+      const result = await run(`INSERT OR IGNORE INTO submissions(assignment,student,response,audio,audio_type,raw,band)
+        SELECT id,?,?,?,?,?,? FROM assignments WHERE id=? AND kind=? AND level=? AND keys=?`,
+        user.id, response, audio, audio ? form.audio.type : null, raw, band, assignment.id, assignment.kind, assignment.level, assignment.keys);
+      if (!result.rowsAffected) fail(409, 'You already submitted this assignment, or it changed. Refresh and try again.');
       return send(res, { raw, band }, 201);
     }
     const submission = /^\/api\/submissions\/(\d+)\/(\d+)\/(audio|review)$/.exec(path);

@@ -31,6 +31,7 @@ const skillPath = kind => pathsByPage.tasks + (kind ? '/' + kind.toLowerCase() :
 function readRoute(path = location.pathname) {
   const normalized = path.replace(/\/$/, '') || '/';
   if (normalized === '/') return { page: 'landing' };
+  if (normalized === '/admin') return { page: 'admin' };
   if (normalized === '/login') return { page: 'login' };
   for (const [page, url] of Object.entries(pathsByPage)) {
     if (url === normalized) return { page };
@@ -58,6 +59,10 @@ function showRoute() {
   if (modal.open) modal.close();
   stopLandingScroll?.();
   stopLandingScroll = undefined;
+  if (route.page === 'admin') {
+    loadAdmin();
+    return;
+  }
   if (route.page === 'landing') {
     landing();
     return;
@@ -72,7 +77,7 @@ function showRoute() {
   }
   if (route.page === 'login') {
     const next = new URLSearchParams(location.search).get('next');
-    const validNext = next?.startsWith('/') && !next.startsWith('//') && !['landing', 'login', 'not-found'].includes(readRoute(next).page);
+    const validNext = next?.startsWith('/') && !next.startsWith('//') && !['admin', 'landing', 'login', 'not-found'].includes(readRoute(next).page);
     navigate(validNext ? next : pathsByPage.home, { replace: true });
     return;
   }
@@ -335,7 +340,7 @@ function home() {
   return '<section class="hero"><div class="hero-art" aria-hidden="true">IELTS</div><div class="eyebrow"><span class="dot"></span>' +
     (teacher() ? 'Teacher workspace' : 'Student workspace') + '</div><h1>Hello, ' + esc(user.name) +
     '!</h1><p>' + (teacher() ? 'Assign homework, review submissions, and track student progress.' : 'Complete your IELTS assignments and track your results.') +
-    '</p>' + (teacher() ? action('create', 'New assignment', 'accent', 'plus') : link('/assignments', 'View assignments', 'accent', 'arrow')) + '</section>' +
+    '</p>' + (teacher() ? link('/admin', 'Manage assignments', 'accent', 'arrow') : link('/assignments', 'View assignments', 'accent', 'arrow')) + '</section>' +
     '<section class="stats" aria-label="Overview">' + stat('Total assignments', dashboard.assignments.length, 'tasks', 'blue-soft') +
     (teacher() ? stat('Students', dashboard.students.length, 'students', 'blue-rich') : stat('Submitted', counts.done, 'check', 'blue-rich')) +
     stat('Pending review', counts.pending, 'clock', 'red-soft') + '</section>' +
@@ -351,7 +356,7 @@ function home() {
 function tasks({ skill: filter = '' }) {
   const rows = dashboard.assignments.filter(a => !filter || a.kind === filter);
   return '<div class="headline"><div><h1>Assignments</h1><p class="subhead">IELTS homework by skill</p></div>' +
-    (teacher() ? action('create', 'New assignment', '', 'plus') : '') + '</div><div class="filters" aria-label="Skills">' +
+    (teacher() ? link('/admin', 'Manage assignments', '', 'arrow') : '') + '</div><div class="filters" aria-label="Skills">' +
     ['', ...kinds].map(kind => '<a href="' + skillPath(kind) + '" data-route' +
       (kind === filter ? ' class="active" aria-current="page"' : '') + '>' + (kind || 'All skills') + '</a>').join('') +
     '</div><section class="panel">' + (rows.map(assignmentRow).join('') || empty('No assignments for this skill.')) + '</section>';
@@ -406,9 +411,9 @@ function openModal(title, contents) {
   if (!modal.open) modal.showModal();
 }
 
-function upload(file) {
+function upload(file, limit = maxUpload) {
   if (!file?.size) return Promise.resolve(null);
-  if (file.size > maxUpload) throw new Error('Each file must be at most ' + (maxUpload / 1048576) + ' MB.');
+  if (file.size > limit) throw new Error('Each file must be at most ' + (limit / 1048576) + ' MB.');
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve({ data: reader.result.split(',')[1], type: file.type });
@@ -419,35 +424,126 @@ function upload(file) {
 
 const submitButton = label => errorLine + '<button type="submit" class="btn">' + label + '</button>';
 
-function create() {
-  openModal('New assignment', '<form><label>Skill<select name="kind">' + kinds.map(kind => '<option>' + kind + '</option>').join('') +
-    '</select></label><label>Title<input name="title" required maxlength="180"></label><label>Due date<input type="date" name="due"></label><div id="kind-fields"></div>' +
-    submitButton('Publish assignment') + '</form>');
+let adminAssignments = [];
+let adminUploadLimit = 0;
+
+async function loadAdmin() {
+  document.title = 'Admin | Walker IELTS';
+  try {
+    const state = await api('admin/session');
+    if (readRoute().page !== 'admin') return;
+    adminUploadLimit = state.maxUpload;
+    if (state.signedIn) await showAdminAssignments();
+    else adminLogin();
+  } catch (error) {
+    if (readRoute().page !== 'admin') return;
+    adminLogin();
+    showError(error);
+  }
+}
+
+function adminLogin() {
+  app.innerHTML = '<main class="admin-login"><div class="admin-login-brand">' + brand + '</div>' +
+    '<section class="admin-login-box"><h1>Admin sign in</h1><form>' +
+    '<label>Username<input name="username" required autocomplete="username" maxlength="100" autocapitalize="none"></label>' +
+    '<label>Password<input name="password" type="password" required autocomplete="current-password" maxlength="200"></label>' +
+    submitButton('Sign in') + '</form><a href="/">Back to home</a></section></main>';
+  bindForm(app, async values => {
+    await api('admin/login', Object.fromEntries(values));
+    await loadAdmin();
+  });
+}
+
+async function showAdminAssignments(message = '') {
+  const assignments = await api('admin/assignments');
+  if (readRoute().page !== 'admin') return;
+  adminAssignments = assignments;
+  app.innerHTML = '<div class="admin-page"><header class="admin-bar"><a href="/" aria-label="Walker IELTS home">' + brand + '</a>' +
+    '<span>Admin</span><div class="admin-actions">' + action('admin-password', 'Change password') +
+    action('admin-logout', 'Sign out', 'light', 'logout') + '</div></header>' +
+    '<main class="admin-content"><div class="headline"><div><h1>Manage assignments</h1>' +
+    '<p class="subhead">Publish and manage IELTS tests for your class.</p></div>' +
+    action('admin-create', 'New assignment', 'accent', 'plus') + '</div>' +
+    (message ? '<p class="notice" role="status">' + esc(message) + '</p>' : '') + errorLine +
+    '<section class="panel" aria-label="Assignments">' + (assignments.map(assignment =>
+      '<article class="row admin-assignment">' + tile(assignment.kind.toLowerCase()) +
+      '<div class="grow"><strong>' + esc(assignment.title) + '</strong><small>' + assignment.kind + ' · ' +
+      assignment.submissionCount + (assignment.submissionCount === 1 ? ' submission' : ' submissions') + '</small></div>' +
+      '<div class="admin-actions">' + action('admin-edit:' + assignment.id, 'Edit', 'light', 'writing') +
+      action('admin-delete:' + assignment.id, 'Delete') + '</div></article>'
+    ).join('') || empty('No assignments yet.')) + '</section></main></div>';
+}
+
+function editAssignment(existing) {
+  const locked = Boolean(existing?.submissionCount);
+  openModal(existing ? 'Edit assignment' : 'New assignment', '<form><label>Skill<select name="kind"' + (locked ? ' disabled' : '') + '>' +
+    kinds.map(kind => '<option' + (kind === existing?.kind ? ' selected' : '') + '>' + kind + '</option>').join('') +
+    '</select></label><label>Title<input name="title" required maxlength="180" value="' + esc(existing?.title) +
+    '"></label><label>Due date<input type="date" name="due" value="' + esc(existing?.due) + '"></label><div id="kind-fields"></div>' +
+    (locked ? '<p class="help">The skill, reading type, and answer key are locked because students have submitted this assignment.</p>' : '') +
+    submitButton(existing ? 'Save changes' : 'Publish assignment') + '</form>');
   const selector = modal.querySelector('[name=kind]');
   const fields = modal.querySelector('#kind-fields');
   function renderFields() {
     const kind = selector.value;
+    const sameKind = existing?.kind === kind;
+    const general = sameKind && existing.level === 'General';
+    const retained = sameKind && existing.hasPdf;
+    const hasAudio = sameKind && existing.hasAudio;
     fields.innerHTML = ['Listening', 'Reading'].includes(kind)
-      ? '<label>Assignment PDF<input name="pdf" type="file" accept=".pdf,application/pdf" required></label>' +
-        (kind === 'Listening' ? '<label>Listening audio<input name="audio" type="file" accept="audio/*" required></label>' :
-          '<label>Reading test type<select name="level"><option value="Academic">Academic</option><option value="General">General Training</option></select></label>') +
-        '<label>Answer key<textarea name="keys" required placeholder="One answer per line"></textarea></label>' +
-        (maxUpload < 10 * 1024 * 1024 ? '<p class="help">The PDF and audio together must be at most ' + (maxUpload / 1048576) + ' MB.</p>' : '') +
+      ? '<label>' + (retained ? 'Replace assignment PDF (optional)' : 'Assignment PDF') +
+        '<input name="pdf" type="file" accept=".pdf,application/pdf"' + (!sameKind ? ' required' : '') + '></label>' +
+        (kind === 'Listening' ? '<label>' + (hasAudio ? 'Replace listening audio (optional)' : 'Listening audio') +
+          '<input name="audio" type="file" accept="audio/*"' + (hasAudio ? '' : ' required') + '></label>' :
+          '<label>Reading test type<select name="level"' + (locked ? ' disabled' : '') +
+          '><option value="Academic">Academic</option><option value="General"' + (general ? ' selected' : '') +
+          '>General Training</option></select></label>') +
+        '<label>Answer key<textarea name="keys" required placeholder="One answer per line"' + (locked ? ' readonly' : '') + '>' +
+        (sameKind ? esc(existing.keys.join('\n')) : '') + '</textarea></label>' +
+        (adminUploadLimit < 10 * 1024 * 1024 ? '<p class="help">The PDF and audio together must be at most ' + (adminUploadLimit / 1048576) + ' MB.</p>' : '') +
         '<p class="help">Separate acceptable alternatives with |. An estimated IELTS band is available for 40-question assignments.</p>'
-      : '<label>Prompt and instructions<textarea name="prompt" required maxlength="40000"></textarea></label>';
+      : '<label>Prompt and instructions<textarea name="prompt" required maxlength="40000">' +
+        (sameKind ? esc(existing.prompt) : '') + '</textarea></label>';
   }
   selector.onchange = renderFields;
   renderFields();
   bindForm(modal, async values => {
     const form = Object.fromEntries(values);
-    if (maxUpload < 10 * 1024 * 1024 && (form.pdf?.size || 0) + (form.audio?.size || 0) > maxUpload) {
-      throw new Error('The PDF and audio together must be at most ' + (maxUpload / 1048576) + ' MB.');
+    form.kind = selector.value;
+    if (locked && existing.level) form.level = existing.level;
+    if (adminUploadLimit < 10 * 1024 * 1024 && (form.pdf?.size || 0) + (form.audio?.size || 0) > adminUploadLimit) {
+      throw new Error('The PDF and audio together must be at most ' + (adminUploadLimit / 1048576) + ' MB.');
     }
-    form.pdf = await upload(form.pdf);
-    form.audio = await upload(form.audio);
-    await api('assignments', form);
-    dashboard = await api('dashboard');
-    navigate(pathsByPage.tasks);
+    form.pdf = await upload(form.pdf, adminUploadLimit);
+    form.audio = await upload(form.audio, adminUploadLimit);
+    await api(existing ? 'admin/assignments/' + existing.id + '/edit' : 'admin/assignments', form);
+    modal.close();
+    await showAdminAssignments(existing ? 'Assignment updated.' : 'Assignment published.');
+  });
+}
+
+function deleteAssignment(assignment) {
+  openModal('Delete assignment', '<form><p>Delete <strong>' + esc(assignment.title) + '</strong> and all of its submissions? This is permanent.</p>' +
+    '<div class="admin-actions">' + action('close', 'Cancel') +
+    '<button type="submit" class="btn accent">Delete assignment</button></div>' + errorLine + '</form>');
+  bindForm(modal, async () => {
+    await api('admin/assignments/' + assignment.id + '/delete', {});
+    modal.close();
+    await showAdminAssignments('Assignment deleted.');
+  });
+}
+
+function changeAdminPassword() {
+  openModal('Change admin password', '<form><label>Current password<input name="current" type="password" required autocomplete="current-password" maxlength="200"></label>' +
+    '<label>New password<input name="password" type="password" required minlength="12" maxlength="200" autocomplete="new-password"></label>' +
+    '<label>Confirm new password<input name="confirmation" type="password" required minlength="12" maxlength="200" autocomplete="new-password"></label>' +
+    submitButton('Save password') + '</form>');
+  bindForm(modal, async values => {
+    const { current, password, confirmation } = Object.fromEntries(values);
+    if (password !== confirmation) throw new Error('The new passwords do not match.');
+    await api('admin/password', { current, password });
+    modal.close();
+    await showAdminAssignments('Password changed. Other admin sessions were signed out.');
   });
 }
 
@@ -531,7 +627,7 @@ async function handleAction(event) {
   if (anchor && !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     const route = readRoute(anchor.pathname);
-    if (user && !dashboard && !['landing', 'login'].includes(route.page)) {
+    if (user && !dashboard && !['admin', 'landing', 'login'].includes(route.page)) {
       try {
         dashboard = await api('dashboard');
       } catch (error) {
@@ -552,7 +648,20 @@ async function handleAction(event) {
     }
     if (key === 'close') modal.close();
     if (key === 'register') register();
-    if (key === 'create') create();
+    if (key === 'admin-create') editAssignment();
+    if (key === 'admin-password') changeAdminPassword();
+    if (key === 'admin-logout') {
+      await api('admin/logout', {});
+      adminAssignments = [];
+      adminLogin();
+    }
+    if (key?.startsWith('admin-edit:') || key?.startsWith('admin-delete:')) {
+      const assignment = adminAssignments.find(item => item.id === Number(key.split(':')[1]));
+      if (assignment) {
+        if (key.startsWith('admin-edit:')) editAssignment(assignment);
+        else deleteAssignment(assignment);
+      }
+    }
     if (key === 'add-student') addStudent();
   } catch (error) {
     showError(error, modal.open ? modal : app);
@@ -570,9 +679,12 @@ modal.addEventListener('close', () => {
 });
 if (readRoute().page === 'landing') landing();
 try {
-  ({ user, demo, maxUpload, providers, oauthLink } = await api('session'));
-  if (user && readRoute().page !== 'landing') await refresh();
-  else if (readRoute().page !== 'landing' || user) showRoute();
+  if (readRoute().page === 'admin') await loadAdmin();
+  else {
+    ({ user, demo, maxUpload, providers, oauthLink } = await api('session'));
+    if (user && readRoute().page !== 'landing') await refresh();
+    else if (readRoute().page !== 'landing' || user) showRoute();
+  }
 } catch (error) {
   if (readRoute().page !== 'landing') {
     app.innerHTML = '<main class="content"><p class="error" role="alert"></p></main>';

@@ -188,3 +188,16 @@ input[type=file]{max-width:100%}
 }
 
 @media(max-width:700px){.sidebar .brand{width:116px}}
+
+.admin-login{min-height:100svh;display:grid;place-content:center;gap:20px;padding:22px;background:#081e38}
+.admin-login-brand{justify-self:center}
+.admin-login-box{width:min(400px,calc(100vw - 44px));display:grid;gap:18px;padding:26px;background:#fff;border-radius:14px}
+.admin-login-box h1{font-size:26px;letter-spacing:-.03em}
+.admin-login-box .error:empty,.admin-content .error:empty{display:none}
+.admin-bar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:#081e38;color:white;padding:10px clamp(16px,4vw,48px)}
+.admin-bar .brand{width:120px}
+.admin-bar .admin-actions{margin-left:auto}
+.admin-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.admin-content{max-width:1060px;padding:28px 20px 48px;margin:auto}
+.admin-content .headline{margin-bottom:18px;flex-wrap:wrap}
+@media(max-width:480px){.admin-bar{gap:8px}.admin-assignment{flex-wrap:wrap}.admin-assignment .admin-actions{flex-basis:100%;justify-content:flex-end}}

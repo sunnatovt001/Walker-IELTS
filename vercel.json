@@ -4,6 +4,7 @@
   "outputDirectory": "public",
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/walker?route=:path*" },
+    { "source": "/admin", "destination": "/index.html" },
     { "source": "/dashboard", "destination": "/index.html" },
     { "source": "/login", "destination": "/index.html" },
     { "source": "/assignments/:path*", "destination": "/index.html" },
