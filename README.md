@@ -35,6 +35,20 @@ SQLite bazasi odatda `data/live` da, demo bazasi `data/demo` da saqlanadi. Deplo
 
 Vercel’da hisoblar, topshiriqlar va yuklangan fayllar Turso bazasida saqlanadi. Vercel Functions so‘rov hajmi chegarasi sababli Reading PDF, Speaking audio va Listening PDF + audio mos ravishda jami 3 MB gacha bo‘lishi mumkin. Lokal SQLite bazasidagi ma’lumotlar avtomatik ko‘chirilmaydi.
 
+## Google va Telegram orqali kirish
+
+Vercel → **Settings → Environment Variables** bo‘limida **Production** uchun quyidagi qiymatlarni sozlang va qayta deploy qiling:
+
+| O‘zgaruvchi | Qiymati |
+| --- | --- |
+| `WALKER_PUBLIC_ORIGIN` | `https://walker-ielts.vercel.app` |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google Cloud Console’da yaratilgan **Web application** OAuth client ma’lumotlari |
+| `TELEGRAM_CLIENT_ID`, `TELEGRAM_CLIENT_SECRET` | Telegram BotFather’da **Bot Settings → Web Login** orqali olingan OIDC client ma’lumotlari |
+
+Google OAuth client’ning **Authorized redirect URIs** ro‘yxatiga `https://walker-ielts.vercel.app/api/oauth/google/callback` ni qo‘shing. Telegram Web Login’da loyiha domenini va `https://walker-ielts.vercel.app/api/oauth/telegram/callback` ni ruxsat etilgan qaytish manzili qilib qo‘shing. Client secret qiymatlarini Vercel’ga kiriting. Telegram bot tokeni o‘rniga Web Login client secret’ini ishlating.
+
+Google tasdiqlagan Gmail yoki Google Workspace emaili mavjud Walker hisobiga mos kelsa, hisob avtomatik bog‘lanadi. Boshqa email va Telegram orqali birinchi marta kirishda Walker hisobining o‘z email-paroli bilan bog‘lash talab qilinadi. Yangi o‘quvchi avval ustoz bergan taklif kodi orqali Walker hisobini ochadi. Login formasidagi parol Walker IELTS hisobiga tegishli.
+
 ## Vazifalar va baholash
 
 - **Reading va Listening.** Ustoz PDF fayl va javob kalitini yuklaydi. Sayt PDF matnini chiqarib, faylni va raqamlangan javob maydonlarini vazifaga biriktiradi. Skanerlangan PDF faylning o‘zi ochiladi. Listening uchun audio ham yuklanadi. Kalitda har qator bitta savolga mos keladi va muqobil javoblar `|` orqali ko‘rsatiladi.

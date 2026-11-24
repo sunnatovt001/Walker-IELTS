@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { authorizationUrl, oauthDigest, oauthToken, providerConfig, verifiedIdentity, workspacePath } from './oauth.js';
 import { createClient } from '@libsql/client';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { resolve } from 'node:path';
@@ -31,6 +32,16 @@ const schema = `
   );
   CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY, user INTEGER REFERENCES users(id), expires INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS oauth_states (
+    key TEXT PRIMARY KEY, provider TEXT NOT NULL, verifier TEXT NOT NULL, next TEXT NOT NULL, expires INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS oauth_links_pending (
+    key TEXT PRIMARY KEY, provider TEXT NOT NULL, subject TEXT NOT NULL, expires INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS oauth_identities (
+    provider TEXT NOT NULL, subject TEXT NOT NULL, user INTEGER NOT NULL REFERENCES users(id),
+    PRIMARY KEY(provider, subject), UNIQUE(provider, user)
   );
   CREATE TABLE IF NOT EXISTS invitations (
     email TEXT PRIMARY KEY, name TEXT NOT NULL, teacher INTEGER NOT NULL REFERENCES users(id),
@@ -183,6 +194,91 @@ function send(res, data, status = 200) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify(data));
 }
 
+const cookieSecure = vercel || process.env.WALKER_SECURE_COOKIE === '1' ? '; Secure' : '';
+const cookieOptions = '; Path=/; HttpOnly; SameSite=Lax' + cookieSecure;
+const oauthLifetime = 600;
+const sessionAge = 604800;
+const publicUser = user => ({ id: user.id, name: user.name, teacher: user.teacher });
+
+function oauthCookie(req, name) {
+  return new RegExp('(?:^|;\\s*)' + name + '=([A-Za-z0-9_-]{43})(?:;|$)').exec(req.headers.cookie || '')?.[1];
+}
+
+function setCookie(res, name, value, age) {
+  const previous = res.getHeader('Set-Cookie') || [];
+  res.setHeader('Set-Cookie', [...previous, name + '=' + value + cookieOptions + '; Max-Age=' + age]);
+}
+
+async function createSession(res, user, token) {
+  const next = randomBytes(32).toString('hex');
+  if (token) await run('DELETE FROM sessions WHERE token=?', token);
+  await run('DELETE FROM sessions WHERE expires<=?', Date.now());
+  await run('INSERT INTO sessions VALUES (?,?,?)', next, user.id, Date.now() + sessionAge * 1000);
+  setCookie(res, 'walker', next, sessionAge);
+}
+
+function redirect(res, path) {
+  res.writeHead(303, { Location: path }).end();
+}
+
+function oauthLoginPath(next, status) {
+  return '/login?' + new URLSearchParams({next, oauth: status});
+}
+
+async function handleOAuth(req, res, url, providerName, phase, token) {
+  const provider = providerConfig(providerName);
+  if (!provider) fail(503, 'This sign-in provider is not configured.');
+  if (req.method !== 'GET') fail(405, 'Use GET for this endpoint.');
+  const now = Date.now();
+  if (phase === 'start') {
+    const state = oauthToken();
+    const verifier = oauthToken();
+    await run('DELETE FROM oauth_states WHERE expires<=?', now);
+    await run('DELETE FROM oauth_links_pending WHERE expires<=?', now);
+    await run('INSERT INTO oauth_states VALUES (?,?,?,?,?)',
+      oauthDigest(state), providerName, verifier, workspacePath(url.searchParams.get('next')), now + oauthLifetime * 1000);
+    setCookie(res, 'walker_oauth', state, oauthLifetime);
+    setCookie(res, 'walker_link', '', 0);
+    return redirect(res, authorizationUrl(provider, state, verifier));
+  }
+
+  const state = url.searchParams.get('state');
+  if (url.searchParams.getAll('state').length !== 1 || !state || state !== oauthCookie(req, 'walker_oauth')) return redirect(res, oauthLoginPath('/dashboard', 'failed'));
+  const flow = await get('DELETE FROM oauth_states WHERE key=? AND provider=? AND expires>? RETURNING verifier,next',
+    oauthDigest(state), providerName, now);
+  setCookie(res, 'walker_oauth', '', 0);
+  const code = url.searchParams.get('code');
+  if (!flow || !code || url.searchParams.getAll('code').length !== 1) return redirect(res, oauthLoginPath(flow?.next || '/dashboard', 'failed'));
+
+  let identity;
+  try {
+    identity = await verifiedIdentity(provider, code, state, flow.verifier);
+  } catch {
+    return redirect(res, oauthLoginPath(flow.next, 'failed'));
+  }
+
+  const findLinked = () => get('SELECT u.id FROM oauth_identities i JOIN users u ON u.id=i.user WHERE i.provider=? AND i.subject=?',
+    providerName, identity.subject);
+  let user = await findLinked();
+  if (!user && identity.email) {
+    const candidate = await get('SELECT id FROM users WHERE email=?', identity.email);
+    if (candidate) {
+      await run('INSERT OR IGNORE INTO oauth_identities VALUES (?,?,?)', providerName, identity.subject, candidate.id);
+      user = await findLinked();
+    }
+  }
+  if (user) {
+    await createSession(res, user, token);
+    return redirect(res, flow.next);
+  }
+
+  const ticket = oauthToken();
+  await run('INSERT INTO oauth_links_pending VALUES (?,?,?,?)',
+    oauthDigest(ticket), providerName, identity.subject, Date.now() + oauthLifetime * 1000);
+  setCookie(res, 'walker_link', ticket, oauthLifetime);
+  return redirect(res, oauthLoginPath(flow.next, 'link'));
+}
+
 export async function handler(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
@@ -203,23 +299,32 @@ export async function handler(req, res) {
     }
     await databaseReady();
     const token = cookie(req);
+    const oauthRoute = /^\/api\/oauth\/(google|telegram)\/(start|callback)$/.exec(path);
+    if (oauthRoute) return await handleOAuth(req, res, url, oauthRoute[1], oauthRoute[2], token);
     if (path === '/api/session' && !post) {
       const user = token && await get('SELECT u.id,u.name,u.teacher FROM sessions s JOIN users u ON u.id=s.user WHERE s.token=? AND s.expires>?', token, Date.now());
-      return send(res, { user: user || null, demo, maxUpload: fileLimit });
+      const ticket = oauthCookie(req, 'walker_link');
+      const pending = ticket && await get('SELECT provider FROM oauth_links_pending WHERE key=? AND expires>?', oauthDigest(ticket), Date.now());
+      return send(res, { user: user || null, demo, maxUpload: fileLimit,
+        providers: ['google', 'telegram'].filter(name => providerConfig(name)), oauthLink: pending?.provider || null });
     }
-    const secure = vercel || process.env.WALKER_SECURE_COOKIE === '1' ? '; Secure' : '';
     if (path === '/api/login' && post) {
-      const { email, password } = await body(req);
+      const { email, password, connectProvider } = await body(req);
       const user = await get('SELECT * FROM users WHERE email=?', emailAddress(email));
       if (typeof password !== 'string' || password.length > 200) fail(400, 'Invalid password format.');
       const computed = passwordHash(password, user?.password.split(':')[0] || 'invalid-user');
       if (!user || !timingSafeEqual(Buffer.from(computed), Buffer.from(user.password))) fail(401, 'Incorrect email or password.');
-      const next = randomBytes(32).toString('hex');
-      if (token) await run('DELETE FROM sessions WHERE token=?', token);
-      await run('DELETE FROM sessions WHERE expires<=?', Date.now());
-      await run('INSERT INTO sessions VALUES (?,?,?)', next, user.id, Date.now() + 604800000);
-      res.setHeader('Set-Cookie', 'walker=' + next + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800' + secure);
-      return send(res, { id: user.id, name: user.name, teacher: user.teacher });
+      if (connectProvider) {
+        const ticket = oauthCookie(req, 'walker_link');
+        if (!ticket) fail(400, 'This connection has expired. Start again with your sign-in provider.');
+        const pending = await get('DELETE FROM oauth_links_pending WHERE key=? AND expires>? RETURNING provider,subject', oauthDigest(ticket), Date.now());
+        setCookie(res, 'walker_link', '', 0);
+        if (!pending) fail(400, 'This connection has expired. Start again with your sign-in provider.');
+        const result = await run('INSERT OR IGNORE INTO oauth_identities VALUES (?,?,?)', pending.provider, pending.subject, user.id);
+        if (!result.rowsAffected) fail(409, 'This provider or Walker account is already linked. Sign in with your email or try your linked provider.');
+      }
+      await createSession(res, user, token);
+      return send(res, publicUser(user));
     }
     if (path === '/api/register' && post) {
       const { email, code, password } = await body(req);
@@ -239,7 +344,8 @@ export async function handler(req, res) {
     }
     if (path === '/api/logout' && post) {
       if (token) await run('DELETE FROM sessions WHERE token=?', token);
-      res.setHeader('Set-Cookie', 'walker=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' + secure);
+      setCookie(res, 'walker', '', 0);
+      setCookie(res, 'walker_link', '', 0);
       return send(res, {});
     }
     const user = token && await get('SELECT u.id,u.name,u.teacher FROM sessions s JOIN users u ON u.id=s.user WHERE s.token=? AND s.expires>?', token, Date.now());

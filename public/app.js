@@ -220,20 +220,42 @@ function animateLanding(landingPage) {
   };
 }
 
+const providerNames = { google: 'Google', telegram: 'Telegram' };
+let providers = [];
+let oauthLink;
+
+function providerOptions() {
+  const next = new URLSearchParams(location.search).get('next') || '/dashboard';
+  return '<div class="login-providers" aria-label="Other sign-in methods">' + Object.entries(providerNames).map(([provider, name]) => {
+    const text = 'Continue with ' + name;
+    if (!providers.includes(provider)) return '<button class="btn light" type="button" disabled>' + text + '</button>';
+    return '<a class="btn light" href="/api/oauth/' + provider + '/start?next=' + encodeURIComponent(next) + '">' + text + '</a>';
+  }).join('') + '</div>' +
+    (providers.length < 2 ? '<p class="help">Unavailable providers require configuration.</p>' : '');
+}
+
 function login(email = '', message = '') {
   document.title = 'Sign in | Walker IELTS';
+  const status = new URLSearchParams(location.search).get('oauth');
+  const connecting = status === 'link' && Object.hasOwn(providerNames, oauthLink);
+  const formTitle = connecting ? 'Link your ' + providerNames[oauthLink] + ' account' : 'Sign in';
+  const statusMessage = status === 'failed' ? 'Provider sign-in could not be completed. Try again or sign in with your email.'
+    : status === 'link' && !connecting ? 'This connection has expired. Start again with your sign-in provider.' : '';
   app.innerHTML = '<main class="login"><section class="login-aside">' + brand +
     '<div><h1>IELTS practice<br>in one place.</h1><p>Assignments, submissions, and results.</p></div></section>' +
-    '<section class="login-main"><div class="login-box"><h2>Sign in</h2><form>' +
+    '<section class="login-main"><div class="login-box"><h2>' + formTitle + '</h2>' +
+    (statusMessage ? '<p class="error" role="status">' + statusMessage + '</p>' : '') +
+    (connecting ? '<p class="help">Sign in with your Walker IELTS email and password once to link your account.</p>' :
+      providerOptions() + '<div class="login-divider">Or use your email</div>') + '<form>' +
     (message ? '<p class="help notice" role="status">' + esc(message) + '</p>' : '') +
     '<label>Email<input required type="email" name="email" autocomplete="username" value="' + esc(email) + '"></label>' +
     '<label>Password<input required type="password" name="password" autocomplete="current-password"></label>' +
-    errorLine + '<button type="submit" class="btn">Sign in ' + icon('arrow', 16) + '</button></form>' +
+    errorLine + '<button type="submit" class="btn accent">' + (connecting ? 'Link account and sign in' : 'Sign in') + ' ' + icon('arrow', 16) + '</button></form>' +
     '<div>' + action('register', 'Create an account with an invite code') + '</div>' +
     '<a href="/" data-route>Back to home</a>' +
     (demo ? '<div class="demo-buttons">' + action('demo-teacher', 'Teacher demo') + action('demo-student', 'Student demo') + '</div>' : '') +
     '</div></section></main>';
-  bindForm(app, values => signIn(Object.fromEntries(values)));
+  bindForm(app, values => signIn({ ...Object.fromEntries(values), connectProvider: connecting }));
   app.querySelectorAll('[data-action^=demo-]').forEach(button => button.onclick = async () => {
     button.disabled = true;
     try {
@@ -538,7 +560,7 @@ modal.addEventListener('close', () => {
 });
 if (readRoute().page === 'landing') landing();
 try {
-  ({ user, demo, maxUpload } = await api('session'));
+  ({ user, demo, maxUpload, providers, oauthLink } = await api('session'));
   if (user && readRoute().page !== 'landing') await refresh();
   else if (readRoute().page !== 'landing' || user) showRoute();
 } catch (error) {

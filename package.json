@@ -7,10 +7,11 @@
   },
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check api/walker.js && node --check public/app.js"
+    "check": "node --check server.js && node --check oauth.js && node --check api/walker.js && node --check public/app.js"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
+    "jose": "^6.2.18",
     "unpdf": "^2.2.2"
   }
 }
