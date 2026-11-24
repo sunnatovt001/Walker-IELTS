@@ -2,6 +2,15 @@
   "name": "walker-ielts",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
-  "scripts": { "start": "node server.js", "check": "node --check server.js && node --check public/app.js" }
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check api/walker.js && node --check public/app.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "unpdf": "^2.2.2"
+  }
 }

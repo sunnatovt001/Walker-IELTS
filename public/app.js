@@ -29,12 +29,14 @@ let demo;
 let page = 'home';
 let filter = '';
 let dashboard;
+let maxUpload = 10 * 1024 * 1024;
 
 async function api(path, values) {
   const options = values === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) };
   const response = await fetch('/api/' + path, options);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error);
+  if (response.status === 413) throw new Error('Fayllar hajmi ruxsat etilgan chegaradan oshdi.');
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data) throw new Error(data?.error || 'Server bilan bog‘lanib bo‘lmadi.');
   return data;
 }
 
@@ -213,7 +215,7 @@ function openModal(title, contents) {
 
 function upload(file) {
   if (!file?.size) return Promise.resolve(null);
-  if (file.size > 10 * 1024 * 1024) throw new Error('Har bir fayl 10 MB gacha bo‘lishi kerak.');
+  if (file.size > maxUpload) throw new Error('Har bir fayl ' + (maxUpload / 1048576) + ' MB gacha bo‘lishi kerak.');
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve({ data: reader.result.split(',')[1], type: file.type });
@@ -237,6 +239,7 @@ function create() {
         (kind === 'Listening' ? '<label>Listening audio<input name="audio" type="file" accept="audio/*" required></label>' :
           '<label>Reading turi<select name="level"><option value="Academic">Academic</option><option value="General">General Training</option></select></label>') +
         '<label>Javob kaliti<textarea name="keys" required placeholder="Har qatorda bitta javob"></textarea></label>' +
+        (maxUpload < 10 * 1024 * 1024 ? '<p class="help">PDF va audio fayllari jami ' + (maxUpload / 1048576) + ' MB gacha.</p>' : '') +
         '<p class="help">Bir javobning muqobil variantlarini | bilan ajrating. 40 savol uchun taxminiy IELTS bandi chiqadi.</p>'
       : '<label>Savol va ko‘rsatmalar<textarea name="prompt" required maxlength="40000"></textarea></label>';
   }
@@ -244,6 +247,9 @@ function create() {
   renderFields();
   bindForm(modal, async values => {
     const form = Object.fromEntries(values);
+    if (maxUpload < 10 * 1024 * 1024 && (form.pdf?.size || 0) + (form.audio?.size || 0) > maxUpload) {
+      throw new Error('PDF va audio fayllari jami ' + (maxUpload / 1048576) + ' MB gacha.');
+    }
     form.pdf = await upload(form.pdf);
     form.audio = await upload(form.audio);
     await api('assignments', form);
@@ -360,7 +366,7 @@ async function handleAction(event) {
 
 document.addEventListener('click', handleAction);
 try {
-  ({ user, demo } = await api('session'));
+  ({ user, demo, maxUpload } = await api('session'));
   if (user) await refresh();
   else login();
 } catch (error) {

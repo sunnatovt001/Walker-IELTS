@@ -1,15 +1,30 @@
 import http from 'node:http';
-import { DatabaseSync } from 'node:sqlite';
+import { createClient } from '@libsql/client';
+import { extractText, getDocumentProxy } from 'unpdf';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
 
-const demo = process.env.WALKER_DEMO === '1';
-const directory = process.env.WALKER_DATA || (demo ? 'data/demo' : 'data/live');
-mkdirSync(directory, { recursive: true });
-const db = new DatabaseSync(directory + '/walker.sqlite');
-db.exec(`
-  PRAGMA foreign_keys = ON;
+const vercel = process.env.VERCEL === '1';
+const demo = !vercel && process.env.WALKER_DEMO === '1';
+const fileLimit = (vercel ? 3 : 10) * 1024 * 1024;
+let db;
+let initialization;
+
+function openDatabase() {
+  const url = process.env.TURSO_DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+  if (vercel && (!/^libsql:\/\/|^https:\/\//.test(url || '') || !authToken)) {
+    fail(503, 'Vercel sozlamalariga TURSO_DATABASE_URL va TURSO_AUTH_TOKEN qo‘shing.');
+  }
+  if (url) return createClient({ url, authToken, intMode: 'number' });
+  const directory = process.env.WALKER_DATA || (demo ? 'data/demo' : 'data/live');
+  mkdirSync(directory, { recursive: true });
+  return createClient({ url: pathToFileURL(resolve(directory, 'walker.sqlite')).href, intMode: 'number' });
+}
+
+const schema = `
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL, teacher INTEGER REFERENCES users(id)
@@ -32,15 +47,14 @@ db.exec(`
     criteria TEXT, feedback TEXT, submitted TEXT DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY(assignment, student)
   );
-`);
+`;
+
+const run = (sql, ...args) => db.execute({ sql, args });
+const all = async (sql, ...args) => (await run(sql, ...args)).rows;
+const get = async (sql, ...args) => (await all(sql, ...args))[0];
 
 function passwordHash(password, salt = randomBytes(16).toString('hex')) {
   return salt + ':' + scryptSync(password, salt, 64).toString('hex');
-}
-
-function addUser(name, email, password, teacher = null) {
-  return db.prepare('INSERT INTO users(name,email,password,teacher) VALUES (?,?,?,?)')
-    .run(name, email, passwordHash(password), teacher).lastInsertRowid;
 }
 
 const emailAddress = value => String(value ?? '').trim().toLowerCase();
@@ -48,29 +62,43 @@ const validEmail = value => value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.
 const validPassword = value => typeof value === 'string' && value.length >= 12 && value.length <= 200;
 const teacherEmail = emailAddress(process.env.WALKER_TEACHER_EMAIL);
 const invitationHash = code => createHash('sha256').update(code).digest('hex');
-if (!demo && teacherEmail && !validEmail(teacherEmail)) throw new Error('WALKER_TEACHER_EMAIL must be a valid email address.');
-
-if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
-  const password = demo ? 'WalkerDemo2026' : process.env.WALKER_TEACHER_PASSWORD;
-  if (!demo && (!teacherEmail || !validPassword(password))) {
-    throw new Error('Set WALKER_TEACHER_EMAIL and WALKER_TEACHER_PASSWORD (12–200 characters) or WALKER_DEMO=1.');
+async function initializeDatabase() {
+  db ??= openDatabase();
+  await db.batch(schema.split(';').map(sql => sql.trim()).filter(Boolean), 'write');
+  if (!demo && teacherEmail && !validEmail(teacherEmail)) fail(503, 'WALKER_TEACHER_EMAIL uchun haqiqiy email kiriting.');
+  if (!await get('SELECT 1 FROM users LIMIT 1')) {
+    const password = demo ? 'WalkerDemo2026' : process.env.WALKER_TEACHER_PASSWORD;
+    if (!demo && (!teacherEmail || !validPassword(password))) {
+      fail(503, 'WALKER_TEACHER_EMAIL va 12–200 belgili WALKER_TEACHER_PASSWORD sozlang.');
+    }
+    const email = demo ? 'teacher@walker.test' : teacherEmail;
+    await run('INSERT OR IGNORE INTO users(name,email,password) VALUES (?,?,?)', 'Walker Teacher', email, passwordHash(password));
+    if (demo) {
+      const { id: teacher } = await get('SELECT id FROM users WHERE email=?', email);
+      const addUser = 'INSERT INTO users(name,email,password,teacher) VALUES (?,?,?,?)';
+      const addAssignment = 'INSERT INTO assignments(teacher,kind,title,prompt,level,keys) VALUES (?,?,?,?,?,?)';
+      await db.batch([
+        { sql: addUser, args: ['Madina Karimova', 'student@walker.test', passwordHash(password), teacher] },
+        { sql: addUser, args: ['Aziz Rahimov', 'aziz@walker.test', passwordHash(password), teacher] },
+        { sql: addUser, args: ['Sevara Aliyeva', 'sevara@walker.test', passwordHash(password), teacher] },
+        { sql: addAssignment, args: [teacher, 'Reading', 'The future of urban transport', 'The city of Oslo has expanded its cycling network. In the first year, the number of cyclists increased by twenty percent.\n\n1. Which city expanded its cycling network?\n2. Did the number of cyclists increase? (Yes/No)', 'Academic', '["Oslo","Yes"]'] },
+        { sql: addAssignment, args: [teacher, 'Writing', 'Education and technology', 'Some people believe technology makes learning more effective. To what extent do you agree or disagree? Write at least 250 words.', 'Academic', '[]'] },
+        { sql: addAssignment, args: [teacher, 'Speaking', 'A place you enjoy visiting', 'Describe a place you enjoy visiting. Say where it is, what you do there, and why you enjoy visiting it.', 'Academic', '[]'] },
+        { sql: 'INSERT INTO submissions(assignment,student,response,raw) VALUES(1,2,?,2)', args: ['["Oslo","Yes"]'] }
+      ], 'write');
+    }
   }
-  const email = demo ? 'teacher@walker.test' : teacherEmail;
-  const teacher = addUser('Walker Teacher', email, password);
-  if (demo) {
-    addUser('Madina Karimova', 'student@walker.test', password, teacher);
-    addUser('Aziz Rahimov', 'aziz@walker.test', password, teacher);
-    addUser('Sevara Aliyeva', 'sevara@walker.test', password, teacher);
-    const insert = db.prepare('INSERT INTO assignments(teacher,kind,title,prompt,level,keys) VALUES (?,?,?,?,?,?)');
-    insert.run(teacher, 'Reading', 'The future of urban transport', 'The city of Oslo has expanded its cycling network. In the first year, the number of cyclists increased by twenty percent.\n\n1. Which city expanded its cycling network?\n2. Did the number of cyclists increase? (Yes/No)', 'Academic', '["Oslo","Yes"]');
-    insert.run(teacher, 'Writing', 'Education and technology', 'Some people believe technology makes learning more effective. To what extent do you agree or disagree? Write at least 250 words.', 'Academic', '[]');
-    insert.run(teacher, 'Speaking', 'A place you enjoy visiting', 'Describe a place you enjoy visiting. Say where it is, what you do there, and why you enjoy visiting it.', 'Academic', '[]');
-    db.prepare('INSERT INTO submissions(assignment,student,response,raw) VALUES(1,2,?,2)').run('["Oslo","Yes"]');
+  if (!demo && teacherEmail) {
+    await run("UPDATE users SET email=? WHERE teacher IS NULL AND email='teacher@walker.local'", teacherEmail);
   }
 }
 
-if (!demo && teacherEmail) {
-  db.prepare("UPDATE users SET email=? WHERE teacher IS NULL AND email='teacher@walker.local'").run(teacherEmail);
+function databaseReady() {
+  initialization ??= initializeDatabase().catch(error => {
+    initialization = undefined;
+    throw error;
+  });
+  return initialization;
 }
 
 const kinds = ['Listening', 'Reading', 'Writing', 'Speaking'];
@@ -102,27 +130,24 @@ function file(value, type) {
   if (!value) return null;
   if (typeof value.data !== 'string') fail(400, 'Fayl formati xato.');
   const buffer = Buffer.from(value.data, 'base64');
-  if (!buffer.length || buffer.length > 10 * 1024 * 1024) fail(400, 'Har bir fayl 10 MB gacha bo‘lishi kerak.');
+  if (!buffer.length || buffer.length > fileLimit) fail(413, 'Fayl hajmi ' + (fileLimit / 1048576) + ' MB dan oshmasligi kerak.');
   if (type === 'pdf' && buffer.subarray(0, 5).toString() !== '%PDF-') fail(400, 'PDF faylni tanlang.');
   if (type === 'audio' && !/^audio\/(mpeg|mp4|wav|x-wav|ogg|webm|aac|flac)$/.test(value.type || '')) fail(400, 'Audio faylni tanlang.');
   return buffer;
 }
 
 async function extractPDF(pdf) {
-  return new Promise((resolve, reject) => {
-    const child = spawn('pdftotext', ['-layout', '-enc', 'UTF-8', '-', '-'], { timeout: 8000 });
-    const chunks = [];
-    let size = 0;
-    child.stdout.on('data', chunk => {
-      size += chunk.length;
-      if (size > 400000) child.kill();
-      else chunks.push(chunk);
-    });
-    child.stdin.on('error', () => {});
-    child.on('error', reject);
-    child.on('close', code => resolve(code === 0 ? Buffer.concat(chunks).toString().trim() : ''));
-    child.stdin.end(pdf);
-  });
+  let document;
+  try {
+    document = await getDocumentProxy(new Uint8Array(pdf));
+    if (document.numPages > 100) return '';
+    const { text } = await extractText(document, { mergePages: false });
+    return text.join('\n\n').trim().slice(0, 150000);
+  } catch {
+    return '';
+  } finally {
+    if (document) await document.loadingTask.destroy();
+  }
 }
 
 const publicFiles = {
@@ -137,9 +162,8 @@ function cookie(req) {
   return /(?:^|;\s*)walker=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie || '')?.[1];
 }
 
-function scopedAssignment(user, id, columns = assignmentColumns) {
-  const assignment = db.prepare('SELECT ' + columns + ' FROM assignments WHERE id=? AND teacher=?')
-    .get(id, user.teacher ?? user.id);
+async function scopedAssignment(user, id, columns = assignmentColumns) {
+  const assignment = await get('SELECT ' + columns + ' FROM assignments WHERE id=? AND teacher=?', id, user.teacher ?? user.id);
   if (!assignment) fail(404, 'Vazifa topilmadi.');
   return assignment;
 }
@@ -152,12 +176,15 @@ function send(res, data, status = 200) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify(data));
 }
 
-const server = http.createServer(async (req, res) => {
+export async function handler(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const path = new URL(req.url, 'http://localhost').pathname;
+    const url = new URL(req.url, 'http://localhost');
+    const path = url.pathname === '/api/walker' && url.searchParams.has('route')
+      ? '/api/' + url.searchParams.get('route')
+      : url.pathname;
     const post = req.method === 'POST';
     if (post && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) fail(415, 'JSON yuboring.');
     if (req.method === 'GET' && publicFiles[path]) {
@@ -165,22 +192,23 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': contentType }).end(readFileSync(new URL('./public/' + name, import.meta.url)));
       return;
     }
+    await databaseReady();
     const token = cookie(req);
     if (path === '/api/session' && !post) {
-      const user = token && db.prepare('SELECT u.id,u.name,u.teacher FROM sessions s JOIN users u ON u.id=s.user WHERE s.token=? AND s.expires>?').get(token, Date.now());
-      return send(res, { user: user || null, demo });
+      const user = token && await get('SELECT u.id,u.name,u.teacher FROM sessions s JOIN users u ON u.id=s.user WHERE s.token=? AND s.expires>?', token, Date.now());
+      return send(res, { user: user || null, demo, maxUpload: fileLimit });
     }
-    const secure = process.env.WALKER_SECURE_COOKIE === '1' ? '; Secure' : '';
+    const secure = vercel || process.env.WALKER_SECURE_COOKIE === '1' ? '; Secure' : '';
     if (path === '/api/login' && post) {
       const { email, password } = await body(req);
-      const user = db.prepare('SELECT * FROM users WHERE email=?').get(emailAddress(email));
+      const user = await get('SELECT * FROM users WHERE email=?', emailAddress(email));
       if (typeof password !== 'string' || password.length > 200) fail(400, 'Parol formati xato.');
       const computed = passwordHash(password, user?.password.split(':')[0] || 'invalid-user');
       if (!user || !timingSafeEqual(Buffer.from(computed), Buffer.from(user.password))) fail(401, 'Email yoki parol xato.');
       const next = randomBytes(32).toString('hex');
-      if (token) db.prepare('DELETE FROM sessions WHERE token=?').run(token);
-      db.prepare('DELETE FROM sessions WHERE expires<=?').run(Date.now());
-      db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(next, user.id, Date.now() + 604800000);
+      if (token) await run('DELETE FROM sessions WHERE token=?', token);
+      await run('DELETE FROM sessions WHERE expires<=?', Date.now());
+      await run('INSERT INTO sessions VALUES (?,?,?)', next, user.id, Date.now() + 604800000);
       res.setHeader('Set-Cookie', 'walker=' + next + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800' + secure);
       return send(res, { id: user.id, name: user.name, teacher: user.teacher });
     }
@@ -190,36 +218,31 @@ const server = http.createServer(async (req, res) => {
       if (!validEmail(address) || typeof code !== 'string' || !/^[A-Za-z0-9_-]{24}$/.test(code.trim()) || !validPassword(password)) {
         fail(400, 'Email, taklif kodi va 12–200 belgili parol kiriting.');
       }
-      const invite = db.prepare('SELECT name,teacher FROM invitations WHERE email=? AND code_hash=? AND expires>?')
-        .get(address, invitationHash(code.trim()), Date.now());
-      if (!invite) fail(400, 'Taklif kodi xato yoki muddati tugagan.');
-      if (db.prepare('SELECT 1 FROM users WHERE email=?').get(address)) fail(409, 'Bu emailga hisob ochilgan.');
-      db.exec('BEGIN');
-      try {
-        addUser(invite.name, address, password, invite.teacher);
-        db.prepare('DELETE FROM invitations WHERE email=?').run(address);
-        db.exec('COMMIT');
-      } catch (error) {
-        db.exec('ROLLBACK');
-        throw error;
-      }
+      const hash = invitationHash(code.trim());
+      const results = await db.batch([
+        { sql: `INSERT OR IGNORE INTO users(name,email,password,teacher)
+                SELECT name,email,?,teacher FROM invitations WHERE email=? AND code_hash=? AND expires>?`,
+          args: [passwordHash(password), address, hash, Date.now()] },
+        { sql: 'DELETE FROM invitations WHERE email=? AND code_hash=? AND changes() > 0', args: [address, hash] }
+      ], 'write');
+      if (!results[0].rowsAffected) fail(400, 'Taklif kodi xato yoki muddati tugagan.');
       return send(res, {}, 201);
     }
     if (path === '/api/logout' && post) {
-      if (token) db.prepare('DELETE FROM sessions WHERE token=?').run(token);
+      if (token) await run('DELETE FROM sessions WHERE token=?', token);
       res.setHeader('Set-Cookie', 'walker=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' + secure);
       return send(res, {});
     }
-    const user = token && db.prepare('SELECT u.id,u.name,u.teacher FROM sessions s JOIN users u ON u.id=s.user WHERE s.token=? AND s.expires>?').get(token, Date.now());
+    const user = token && await get('SELECT u.id,u.name,u.teacher FROM sessions s JOIN users u ON u.id=s.user WHERE s.token=? AND s.expires>?', token, Date.now());
     if (!user) fail(401, 'Kirish talab qilinadi.');
     const isTeacher = user.teacher === null;
     if (path === '/api/dashboard' && !post) {
-      const assignments = db.prepare('SELECT ' + assignmentColumns + ' FROM assignments WHERE teacher=? ORDER BY id DESC').all(user.teacher ?? user.id)
+      const assignments = (await all('SELECT ' + assignmentColumns + ' FROM assignments WHERE teacher=? ORDER BY id DESC', user.teacher ?? user.id))
         .map(({keys, ...row}) => ({ ...row, questions: JSON.parse(keys).length, ...(isTeacher ? { keys: JSON.parse(keys) } : {}) }));
-      const students = isTeacher ? db.prepare('SELECT id,name,email FROM users WHERE teacher=? ORDER BY name').all(user.id) : [];
+      const students = isTeacher ? await all('SELECT id,name,email FROM users WHERE teacher=? ORDER BY name', user.id) : [];
       const submissions = isTeacher
-        ? db.prepare('SELECT ' + submissionColumns + ' FROM submissions WHERE assignment IN (SELECT id FROM assignments WHERE teacher=?) ORDER BY submitted DESC').all(user.id)
-        : db.prepare('SELECT ' + submissionColumns + ' FROM submissions WHERE student=? ORDER BY submitted DESC').all(user.id);
+        ? await all('SELECT ' + submissionColumns + ' FROM submissions WHERE assignment IN (SELECT id FROM assignments WHERE teacher=?) ORDER BY submitted DESC', user.id)
+        : await all('SELECT ' + submissionColumns + ' FROM submissions WHERE student=? ORDER BY submitted DESC', user.id);
       return send(res, { assignments, students, submissions });
     }
     if (path === '/api/invitations' && post) {
@@ -227,15 +250,15 @@ const server = http.createServer(async (req, res) => {
       const { name, email } = await body(req);
       const address = emailAddress(email);
       if (typeof name !== 'string' || !name.trim() || name.length > 100 || !validEmail(address)) fail(400, 'Ism va emailni tekshiring.');
-      if (db.prepare('SELECT 1 FROM users WHERE email=?').get(address)) fail(409, 'Bu emailga hisob ochilgan.');
-      const existing = db.prepare('SELECT teacher,expires FROM invitations WHERE email=?').get(address);
+      if (await get('SELECT 1 FROM users WHERE email=?', address)) fail(409, 'Bu emailga hisob ochilgan.');
+      const existing = await get('SELECT teacher,expires FROM invitations WHERE email=?', address);
       if (existing && existing.teacher !== user.id && existing.expires > Date.now()) fail(409, 'Bu emailga taklif mavjud.');
       const code = randomBytes(18).toString('base64url');
       const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
-      db.prepare(`
+      await run(`
         INSERT INTO invitations(email,name,teacher,code_hash,expires) VALUES (?,?,?,?,?)
         ON CONFLICT(email) DO UPDATE SET name=excluded.name,teacher=excluded.teacher,code_hash=excluded.code_hash,expires=excluded.expires
-      `).run(address, name.trim(), user.id, invitationHash(code), expires);
+      `, address, name.trim(), user.id, invitationHash(code), expires);
       return send(res, { email: address, code }, 201);
     }
     if (path === '/api/assignments' && post) {
@@ -247,27 +270,27 @@ const server = http.createServer(async (req, res) => {
       if (!kinds.includes(form.kind) || !title || title.length > 180 || (due && !/^\d{4}-\d{2}-\d{2}$/.test(due))) fail(400, 'Vazifa ma’lumotlarini tekshiring.');
       const pdf = objective ? file(form.pdf, 'pdf') : null;
       const audio = form.kind === 'Listening' ? file(form.audio, 'audio') : null;
+      if (vercel && (pdf?.length || 0) + (audio?.length || 0) > fileLimit) fail(413, 'PDF va audio jami 3 MB dan oshmasligi kerak.');
       if (objective && !pdf) fail(400, 'PDF yuklang.');
       if (form.kind === 'Listening' && !audio) fail(400, 'Listening audio faylini yuklang.');
       const keys = objective ? String(form.keys || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean) : [];
       if (objective && (!keys.length || keys.length > 40 || keys.some(line => !line.split('|').some(normalize)))) fail(400, 'Javob kalitiga 1–40 ta javobni alohida qatorlarda yozing.');
       const prompt = objective ? await extractPDF(pdf) : String(form.prompt || '').trim();
       if (!objective && (!prompt || prompt.length > 40000)) fail(400, 'Savol matnini kiriting.');
-      const result = db.prepare('INSERT INTO assignments(teacher,kind,title,prompt,due,level,keys,pdf,audio,audio_type) VALUES (?,?,?,?,?,?,?,?,?,?)')
-        .run(user.id, form.kind, title, prompt, due || null, form.level === 'General' ? 'General' : 'Academic', JSON.stringify(keys), pdf, audio, audio ? form.audio.type : null);
-      return send(res, { id: result.lastInsertRowid }, 201);
+      const result = await run('INSERT INTO assignments(teacher,kind,title,prompt,due,level,keys,pdf,audio,audio_type) VALUES (?,?,?,?,?,?,?,?,?,?)', user.id, form.kind, title, prompt, due || null, form.level === 'General' ? 'General' : 'Academic', JSON.stringify(keys), pdf, audio, audio ? form.audio.type : null);
+      return send(res, { id: Number(result.lastInsertRowid) }, 201);
     }
     const attachment = /^\/api\/assignments\/(\d+)\/(pdf|audio)$/.exec(path);
     if (attachment && !post) {
       const column = attachment[2];
-      const row = scopedAssignment(user, Number(attachment[1]), column + ',audio_type');
+      const row = await scopedAssignment(user, Number(attachment[1]), column + ',audio_type');
       if (!row[column]) fail(404, 'Fayl topilmadi.');
-      return res.writeHead(200, { 'Content-Type': column === 'pdf' ? 'application/pdf' : row.audio_type }).end(row[column]);
+      return res.writeHead(200, { 'Content-Type': column === 'pdf' ? 'application/pdf' : row.audio_type }).end(Buffer.from(row[column]));
     }
     const submit = /^\/api\/assignments\/(\d+)\/submit$/.exec(path);
     if (submit && post) {
       if (isTeacher) fail(403, 'Faqat o‘quvchi topshirishi mumkin.');
-      const assignment = scopedAssignment(user, Number(submit[1]));
+      const assignment = await scopedAssignment(user, Number(submit[1]));
       const form = await body(req);
       const keys = JSON.parse(assignment.keys);
       let raw = null;
@@ -286,19 +309,18 @@ const server = http.createServer(async (req, res) => {
         response = String(form.response || '').trim();
         if (!response || response.length > 40000) fail(400, 'Writing javobingizni kiriting.');
       }
-      const result = db.prepare('INSERT OR IGNORE INTO submissions(assignment,student,response,audio,audio_type,raw,band) VALUES (?,?,?,?,?,?,?)')
-        .run(assignment.id, user.id, response, audio, audio ? form.audio.type : null, raw, band);
-      if (!result.changes) fail(409, 'Bu vazifa allaqachon topshirilgan.');
+      const result = await run('INSERT OR IGNORE INTO submissions(assignment,student,response,audio,audio_type,raw,band) VALUES (?,?,?,?,?,?,?)', assignment.id, user.id, response, audio, audio ? form.audio.type : null, raw, band);
+      if (!result.rowsAffected) fail(409, 'Bu vazifa allaqachon topshirilgan.');
       return send(res, { raw, band }, 201);
     }
     const submission = /^\/api\/submissions\/(\d+)\/(\d+)\/(audio|review)$/.exec(path);
     if (submission) {
       const [, assignmentId, studentId, action] = submission;
-      const assignment = scopedAssignment(user, Number(assignmentId));
+      const assignment = await scopedAssignment(user, Number(assignmentId));
       if (!isTeacher && user.id !== Number(studentId)) fail(403, 'Bu topshiriqqa kirish yo‘q.');
-      const row = db.prepare('SELECT * FROM submissions WHERE assignment=? AND student=?').get(assignment.id, Number(studentId));
+      const row = await get('SELECT * FROM submissions WHERE assignment=? AND student=?', assignment.id, Number(studentId));
       if (!row) fail(404, 'Javob topilmadi.');
-      if (action === 'audio' && !post && row.audio) return res.writeHead(200, { 'Content-Type': row.audio_type }).end(row.audio);
+      if (action === 'audio' && !post && row.audio) return res.writeHead(200, { 'Content-Type': row.audio_type }).end(Buffer.from(row.audio));
       if (action === 'review' && post) {
         requireTeacher(user);
         if (!['Writing', 'Speaking'].includes(assignment.kind)) fail(400, 'Bu vazifa avtomatik tekshiriladi.');
@@ -311,8 +333,7 @@ const server = http.createServer(async (req, res) => {
           band = Math.round(criteria.reduce((sum, value) => sum + value, 0) / criteriaKeys.length * 2) / 2;
         }
         if (!validBand(band)) fail(400, '0–9 band kiriting.');
-        db.prepare('UPDATE submissions SET band=?,criteria=?,feedback=? WHERE assignment=? AND student=?')
-          .run(band, assignment.kind === 'Writing' ? JSON.stringify(criteria) : null, String(form.feedback || '').slice(0, 10000), assignment.id, Number(studentId));
+        await run('UPDATE submissions SET band=?,criteria=?,feedback=? WHERE assignment=? AND student=?', band, assignment.kind === 'Writing' ? JSON.stringify(criteria) : null, String(form.feedback || '').slice(0, 10000), assignment.id, Number(studentId));
         return send(res, { band });
       }
     }
@@ -321,6 +342,8 @@ const server = http.createServer(async (req, res) => {
     if (!error.status) console.error(error);
     if (!res.headersSent) send(res, { error: error.status ? error.message : 'Serverda xatolik yuz berdi.' }, error.status || 500);
   }
-});
+}
 
-server.listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log('Walker IELTS is ready.'));
+if (!vercel && process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  http.createServer(handler).listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log('Walker IELTS is ready.'));
+}

@@ -4,9 +4,10 @@ Ustoz va o‘quvchilar uchun IELTS uy vazifalari portali.
 
 ## Ishga tushirish
 
-Node.js 24 va Poppler `pdftotext` kerak. Ubuntu/Debian paketining nomi `poppler-utils`. npm orqali qo‘shimcha paketlar o‘rnatish talab qilinmaydi.
+Node.js 24 kerak. PDF matni npm paketi orqali o‘qiladi.
 
 ```sh
+npm ci
 npm run check
 WALKER_DEMO=1 npm start
 ```
@@ -16,6 +17,23 @@ Brauzerda `http://localhost:3000` manzilini oching. Demo ekranida ustoz yoki o�
 Haqiqiy guruh uchun server muhitida `WALKER_TEACHER_EMAIL` va kamida 12 belgili `WALKER_TEACHER_PASSWORD` ni sozlang va `npm start` buyrug‘ini ishlating. Bu ma’lumotlar bo‘sh bazada ilk ustoz hisobini yaratadi. Ustoz **O‘quvchilar** sahifasida o‘quvchining emaili uchun taklif kodi yaratadi va uni o‘quvchiga shaxsan beradi. O‘quvchi kirish ekranida **Taklif kodi bilan hisob ochish** tugmasini bosib, o‘z emailini, kodni va yangi parolni kiritadi. Kod bir marta ishlatiladi va 7 kun amal qiladi. Avval ochilgan hisoblar avvalgi email va paroli bilan ishlaydi. Internetga joylashda HTTPS reverse proxy va `WALKER_SECURE_COOKIE=1` ishlating.
 
 SQLite bazasi odatda `data/live` da, demo bazasi `data/demo` da saqlanadi. Deploymentda `WALKER_DATA` ni zaxiralanadigan doimiy diskdagi papkaga sozlang. `PORT` standart qiymati 3000.
+
+## Vercel’da joylash
+
+1. Turso’da baza yarating va bazaning URL manzili hamda yozish huquqiga ega tokenini oling.
+2. Vercel loyihasining **Settings → Environment Variables** bo‘limiga Production uchun quyidagilarni kiriting:
+
+   | O‘zgaruvchi | Qiymat |
+   | --- | --- |
+   | `TURSO_DATABASE_URL` | Turso bergan `libsql://…` manzili |
+   | `TURSO_AUTH_TOKEN` | Turso bergan token |
+   | `WALKER_TEACHER_EMAIL` | Ustozning shaxsiy emaili |
+   | `WALKER_TEACHER_PASSWORD` | Ustoz tanlagan 12–200 belgili parol |
+
+3. `main` branchidagi so‘nggi deployni **Redeploy** qiling. Node.js versiyasi 24.x va loyiha ildizi repo ildizi bo‘lishi kerak. `vercel.json` sayt fayllari va API marshrutlarini sozlaydi.
+4. Saytni ochib, ustoz emaili bilan kiring. Birinchi API so‘rovida jadvallar va ustoz hisobi yaratiladi.
+
+Vercel’da hisoblar, topshiriqlar va yuklangan fayllar Turso bazasida saqlanadi. Vercel Functions so‘rov hajmi chegarasi sababli Reading PDF, Speaking audio va Listening PDF + audio mos ravishda jami 3 MB gacha bo‘lishi mumkin. Lokal SQLite bazasidagi ma’lumotlar avtomatik ko‘chirilmaydi.
 
 ## Vazifalar va baholash
 
