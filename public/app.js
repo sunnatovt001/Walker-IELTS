@@ -56,6 +56,7 @@ function navigate(path, { replace = false, detail = false } = {}) {
 function showRoute() {
   const route = readRoute();
   if (modal.open) modal.close();
+  notebookObserver?.disconnect();
   if (route.page === 'landing') {
     landing();
     return;
@@ -78,6 +79,7 @@ function showRoute() {
   render(route);
 }
 let dashboard;
+let notebookObserver;
 let maxUpload = 10 * 1024 * 1024;
 
 async function api(path, values) {
@@ -129,10 +131,10 @@ function landing() {
   const entry = user ? pathsByPage.home : '/login';
   const primary = user ? 'Open dashboard' : 'Sign in to Walker IELTS';
   const skills = [
-    ['Listening', 'Listen to recordings and submit your answers.'],
-    ['Reading', 'Read exam passages and check your answers.'],
-    ['Writing', 'Submit written responses and get feedback on IELTS criteria.'],
-    ['Speaking', 'Upload spoken responses for your teacher to review.']
+    ['Listening', 'Listen to your assignment recording, then submit your answers.', 'Check your score after you submit.'],
+    ['Reading', 'Read the passage and answer the questions your teacher assigned.', 'Check how many answers you got right.'],
+    ['Writing', 'Respond to your prompt and get feedback on the four IELTS writing criteria.', 'Review your teacher’s comments alongside your band score.'],
+    ['Speaking', 'Record your response and upload it for your teacher to review.', 'Return to Results to see your score and feedback.']
   ];
   document.title = 'Walker IELTS | Practice and progress';
   app.innerHTML = '<div class="landing"><header class="landing-header"><div class="landing-width landing-bar">' +
@@ -140,11 +142,12 @@ function landing() {
     '<nav aria-label="Main navigation"><a href="#skills" class="landing-nav-link">Explore skills</a>' +
     link(entry, user ? 'Dashboard' : 'Sign in', 'light', 'arrow') + '</nav></div></header>' +
     '<main><section class="landing-hero"><div class="landing-width landing-hero-grid"><div class="landing-intro">' +
-    '<h1>IELTS practice.<br><em>Clear progress.</em></h1>' +
+    '<h1>Practice for IELTS<br><em>with your teacher.</em></h1>' +
     '<p>Complete your assignments, get feedback from your teacher, and track your results across all four IELTS skills.</p>' +
     '<div class="landing-actions">' + link(entry, primary, 'accent', 'arrow') +
     '<a class="landing-secondary" href="#skills">Explore skills ' + icon('next', 15) + '</a></div></div>' +
-    '<div class="landing-preview"><div class="landing-preview-card"><div class="landing-preview-header">' +
+    '<div class="landing-preview"><img class="landing-desk" src="/landing-desk.webp" width="1200" height="900" alt="" fetchpriority="high">' +
+    '<div class="landing-preview-card"><div class="landing-preview-header">' +
     tile('tasks', 'blue-soft') + '<div><h2>Assignments</h2><p>Example workspace</p></div></div>' +
     '<div class="landing-preview-rows">' +
     [['listening', 'Campus tour', 'Listening', 'To do'], ['reading', 'Urban transport', 'Reading', '7.0 band'], ['writing', 'Education and technology', 'Writing', 'In review']].map(([key, title, kind, status]) =>
@@ -152,11 +155,30 @@ function landing() {
       '<span class="pill' + (status === 'In review' ? ' pending' : '') + '">' + status + '</span></div>').join('') +
     '</div></div></div>' +
     '</div></section><section class="landing-width landing-skills" id="skills"><h2>Practice all four skills</h2>' +
-    '<div class="landing-skill-grid">' + skills.map(([kind, description]) =>
-      '<article class="landing-skill">' + tile(kind.toLowerCase()) + '<h3>' + kind + '</h3><p>' + description + '</p></article>').join('') +
+    '<div class="landing-notebook">' + skills.map(([kind, description, outcome]) =>
+      '<article class="landing-note"><div class="landing-note-title">' + tile(kind.toLowerCase()) +
+      '<h3>' + kind + '</h3></div><p>' + description + '</p><p class="landing-note-outcome">' + outcome + '</p></article>').join('') +
     '</div></section></main><footer class="landing-footer"><div class="landing-width landing-bar">' +
     '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brand + '</a>' +
     link(entry, user ? 'Dashboard' : 'Sign in', 'light', 'arrow') + '</div></footer></div>';
+  if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    notebookObserver = new IntersectionObserver((entries, observer) => {
+      let delay = 0;
+      for (const { target, isIntersecting } of entries) {
+        if (!isIntersecting) continue;
+        target.style.setProperty('--note-delay', delay + 'ms');
+        target.classList.replace('note-waiting', 'note-open');
+        observer.unobserve(target);
+        delay += 95;
+      }
+    }, { threshold: 0.25, rootMargin: '0px 0px -12% 0px' });
+
+    for (const note of app.querySelectorAll('.landing-note')) {
+      note.classList.add('note-waiting');
+      notebookObserver.observe(note);
+    }
+  }
+
 }
 
 function login(email = '', message = '') {
@@ -479,7 +501,7 @@ if (readRoute().page === 'landing') landing();
 try {
   ({ user, demo, maxUpload } = await api('session'));
   if (user && readRoute().page !== 'landing') await refresh();
-  else showRoute();
+  else if (readRoute().page !== 'landing' || user) showRoute();
 } catch (error) {
   if (readRoute().page !== 'landing') {
     app.innerHTML = '<main class="content"><p class="error" role="alert"></p></main>';

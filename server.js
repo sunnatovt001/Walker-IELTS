@@ -154,7 +154,8 @@ const publicFiles = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-  '/walker-logo.png': ['walker-logo.png', 'image/png']
+  '/walker-logo.png': ['walker-logo.png', 'image/png'],
+  '/landing-desk.webp': ['landing-desk.webp', 'image/webp']
 };
 const assignmentColumns = 'id,kind,title,prompt,due,level,keys,(pdf IS NOT NULL) AS hasPdf,(audio IS NOT NULL) AS hasAudio';
 const submissionColumns = 'assignment,student,response,raw,band,criteria,feedback,submitted,(audio IS NOT NULL) AS hasAudio';
