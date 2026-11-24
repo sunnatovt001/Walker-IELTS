@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="35 194 568 255">
+  <path fill="#ed1934" d="M48 207h193v105c0 51-41 92-97 124-56-32-96-73-96-124z"/>
+  <path fill="#fff" d="m55 218 45 28 22-15 22 16 22-16 22 15 46-28v94c0 47-38 86-90 116-52-30-89-69-89-116z"/>
+  <path fill="#082a4e" d="m64 233 49 32v56l8 8 10-54c14-7 32-3 40 12l-10-1c-4 0-6 4-5 8l6 23 6 12 8-8v-56l48-32v48l-24 16v5l24-15v47l-36 10 32 2c-6 12-15 23-26 33l-26-16-9 10 17 23-32 22-32-22 17-23-9-10-26 16c-11-10-20-21-26-33l32-2-36-10v-47l24 15v-5l-24-16z"/>
+  <g fill="#082a4e" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="900">
+    <text x="272" y="312" textLength="320" lengthAdjust="spacingAndGlyphs">WALKER</text>
+    <text x="271" y="377" textLength="192" lengthAdjust="spacingAndGlyphs">IELTS</text>
+  </g>
+  <text x="274" y="400" fill="#222" font-family="Arial, Helvetica, sans-serif" font-size="17" textLength="187" lengthAdjust="spacingAndGlyphs">Muvaffaqiyatga erishing!</text>
+</svg>

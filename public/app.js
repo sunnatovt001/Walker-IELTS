@@ -3,7 +3,6 @@ const modal = document.querySelector('#modal');
 const kinds = ['Listening', 'Reading', 'Writing', 'Speaking'];
 const criteria = ['Task achievement / response', 'Coherence and cohesion', 'Lexical resource', 'Grammatical range and accuracy'];
 const paths = {
-  logo: '<path d="m3 6 4 13 5-9 5 9 4-13"/>',
   home: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   tasks: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 9h6m-6 4h6m-6 4h4"/>',
   students: '<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2m2-14a3 3 0 0 1 0 6m1 2a4 4 0 0 1 3 4v2"/>',
@@ -22,7 +21,7 @@ const paths = {
 };
 const icon = (name, size = 19) => '<svg aria-hidden="true" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + paths[name] + '</svg>';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const brand = '<div class="brand"><div class="logo">' + icon('logo', 24) + '</div><span>Walker<span>IELTS</span></span></div>';
+const brand = '<img class="brand" src="/walker-logo.svg" width="568" height="255" alt="Walker IELTS">';
 const labels = { home: 'Dashboard', tasks: 'Assignments', students: 'Students', results: 'Results' };
 let user;
 let demo;
@@ -143,10 +142,10 @@ function landing() {
     '<main><section class="landing-hero"><div class="landing-width landing-hero-grid"><div class="landing-intro">' +
     '<h1>IELTS practice.<br><em>Clear progress.</em></h1>' +
     '<p>Complete your assignments, get feedback from your teacher, and track your results across all four IELTS skills.</p>' +
-    '<div class="landing-actions">' + link(entry, primary, 'lime', 'arrow') +
+    '<div class="landing-actions">' + link(entry, primary, 'accent', 'arrow') +
     '<a class="landing-secondary" href="#skills">Explore skills ' + icon('next', 15) + '</a></div></div>' +
     '<div class="landing-preview"><div class="landing-preview-card"><div class="landing-preview-header">' +
-    tile('tasks', 'sage') + '<div><h2>Assignments</h2><p>Example workspace</p></div></div>' +
+    tile('tasks', 'blue-soft') + '<div><h2>Assignments</h2><p>Example workspace</p></div></div>' +
     '<div class="landing-preview-rows">' +
     [['listening', 'Campus tour', 'Listening', 'To do'], ['reading', 'Urban transport', 'Reading', '7.0 band'], ['writing', 'Education and technology', 'Writing', 'In review']].map(([key, title, kind, status]) =>
       '<div class="landing-preview-row">' + tile(key) + '<div class="grow"><strong>' + title + '</strong><small>' + kind + '</small></div>' +
@@ -243,10 +242,10 @@ function home() {
   return '<section class="hero"><div class="hero-art" aria-hidden="true">IELTS</div><div class="eyebrow"><span class="dot"></span>' +
     (teacher() ? 'Teacher workspace' : 'Student workspace') + '</div><h1>Hello, ' + esc(user.name) +
     '!</h1><p>' + (teacher() ? 'Assign homework, review submissions, and track student progress.' : 'Complete your IELTS assignments and track your results.') +
-    '</p>' + (teacher() ? action('create', 'New assignment', 'lime', 'plus') : link('/assignments', 'View assignments', 'lime', 'arrow')) + '</section>' +
-    '<section class="stats" aria-label="Overview">' + stat('Total assignments', dashboard.assignments.length, 'tasks', 'sage') +
-    (teacher() ? stat('Students', dashboard.students.length, 'students', 'lilac') : stat('Submitted', counts.done, 'check', 'lilac')) +
-    stat('Pending review', counts.pending, 'clock', 'sand') + '</section>' +
+    '</p>' + (teacher() ? action('create', 'New assignment', 'accent', 'plus') : link('/assignments', 'View assignments', 'accent', 'arrow')) + '</section>' +
+    '<section class="stats" aria-label="Overview">' + stat('Total assignments', dashboard.assignments.length, 'tasks', 'blue-soft') +
+    (teacher() ? stat('Students', dashboard.students.length, 'students', 'blue-rich') : stat('Submitted', counts.done, 'check', 'blue-rich')) +
+    stat('Pending review', counts.pending, 'clock', 'red-soft') + '</section>' +
     '<div class="headline"><h2>IELTS skills</h2></div><section class="tiles">' + kinds.map(kind => {
       const count = dashboard.assignments.filter(a => a.kind === kind).length;
       return '<a class="skill" href="' + skillPath(kind) + '" data-route><span class="skill-title">' + tile(kind.toLowerCase()) + icon('arrow', 16) +
