@@ -1,0 +1,7 @@
+{
+  "name": "walker-ielts",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": { "start": "node server.js", "check": "node --check server.js && node --check public/app.js" }
+}
