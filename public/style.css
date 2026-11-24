@@ -125,7 +125,10 @@ input[type=file]{max-width:100%}
 .landing-hero-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:center;gap:clamp(24px,4vw,52px);padding-block:104px 64px;min-height:clamp(490px,65svh,660px)}
 .landing-intro h1{font-size:clamp(38px,4vw,58px);line-height:1.04;letter-spacing:-.057em;font-weight:800}
 .landing-intro h1 em{color:#fff0e0;font-style:normal}
-.landing-intro h1::after{content:"";display:block;width:clamp(62px,10vw,148px);height:5px;border-radius:8px;background:#e71b40;margin-top:14px}
+.hero-marker{position:relative;isolation:isolate;background:none;color:#172b3d;white-space:nowrap}
+.hero-marker::before{content:"";position:absolute;z-index:-1;inset:.11em -.09em .07em;background:#ffe361;transform:rotate(-2deg);clip-path:polygon(1% 13%,13% 8%,32% 11%,52% 6%,71% 10%,92% 5%,99% 13%,98% 36%,100% 52%,97% 69%,98% 86%,87% 92%,63% 88%,41% 94%,17% 90%,0 95%,2% 72%,0 49%,2% 30%)}
+.hero-underline{position:relative;display:inline-block}
+.hero-underline::after{content:"";position:absolute;inset:auto -.04em -.13em;height:.19em;background:center/100% 100% no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 14' preserveAspectRatio='none'%3E%3Cpath d='M2 8 C12 2 20 2 30 6 S47 13 57 7 S73 2 83 6 S101 12 118 4' fill='none' stroke='%23ed2148' stroke-width='3.3' stroke-linecap='round'/%3E%3C/svg%3E")}
 .landing-intro p{font-size:clamp(17px,1.65vw,24px);line-height:1.45;color:#f2f6fa;max-width:470px;margin:24px 0 28px}
 .landing-actions{flex-wrap:wrap;gap:18px}
 .landing-actions .btn{padding:14px 26px;font-size:16px}

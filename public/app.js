@@ -143,7 +143,7 @@ function landing() {
     '<nav aria-label="Main navigation"><a href="#skills" class="landing-nav-link">Explore skills</a>' +
     link(entry, user ? 'Dashboard' : 'Sign in', 'accent', 'arrow') + '</nav></div></header>' +
     '<main><section class="landing-hero"><div class="landing-width landing-hero-grid"><div class="landing-intro">' +
-    '<h1>Build your IELTS skills.<br><em>With your teacher.</em></h1>' +
+    '<h1>Build your IELTS skills.<br><em><span class="hero-underline">With</span> your <mark class="hero-marker">teacher</mark>.</em></h1>' +
     '<p>Complete assignments, get teacher feedback, and track your progress.</p>' +
     '<div class="landing-actions">' + link(entry, primary, 'accent', 'arrow') +
     '<a class="landing-secondary" href="#skills">Explore skills ' + icon('next', 15) + '</a></div></div>' +
