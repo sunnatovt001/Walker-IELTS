@@ -72,17 +72,19 @@ const tile = (key, color = key) => '<div class="tile-icon ' + color + '">' + ico
 const action = (name, text, style = 'light', glyph = '') => '<button type="button" class="btn ' + style + '" data-action="' + name + '">' + (glyph ? icon(glyph, 16) : '') + text + '</button>';
 const initials = name => esc(name.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase());
 
-function login() {
+function login(email = '', message = '') {
   app.innerHTML = '<main class="login"><section class="login-aside">' + brand +
     '<div><h1>IELTS darslari<br>bir joyda.</h1><p>Topshiriqlar, javoblar va natijalar.</p></div></section>' +
     '<section class="login-main"><div class="login-box"><h2>Kabinetga kirish</h2><form>' +
-    '<label>Email<input required type="email" name="email" autocomplete="username"></label>' +
+    (message ? '<p class="help notice" role="status">' + esc(message) + '</p>' : '') +
+    '<label>Email<input required type="email" name="email" autocomplete="username" value="' + esc(email) + '"></label>' +
     '<label>Parol<input required type="password" name="password" autocomplete="current-password"></label>' +
     errorLine + '<button type="submit" class="btn">Kirish ' + icon('arrow', 16) + '</button></form>' +
+    '<div>' + action('register', 'Taklif kodi bilan hisob ochish') + '</div>' +
     (demo ? '<div class="demo-buttons">' + action('demo-teacher', 'Ustoz demo') + action('demo-student', 'O‘quvchi demo') + '</div>' : '') +
     '</div></section></main>';
   bindForm(app, values => signIn(Object.fromEntries(values)));
-  app.querySelectorAll('[data-action]').forEach(button => button.onclick = async () => {
+  app.querySelectorAll('[data-action^=demo-]').forEach(button => button.onclick = async () => {
     button.disabled = true;
     try {
       const email = button.dataset.action === 'demo-teacher' ? 'teacher@walker.test' : 'student@walker.test';
@@ -92,6 +94,20 @@ function login() {
     } finally {
       button.disabled = false;
     }
+  });
+}
+
+function register() {
+  openModal('O‘quvchi hisobini ochish', '<form><label>Email<input name="email" required type="email" autocomplete="username"></label>' +
+    '<label>Taklif kodi<input name="code" required autocomplete="off" spellcheck="false"></label>' +
+    '<label>Yangi parol<input name="password" type="password" required minlength="12" maxlength="200" autocomplete="new-password"></label>' +
+    submitButton('Hisob ochish') + '</form>');
+  const emailInput = app.querySelector('[name=email]');
+  if (emailInput) modal.querySelector('[name=email]').value = emailInput.value;
+  bindForm(modal, async values => {
+    await api('register', Object.fromEntries(values));
+    modal.close();
+    login(values.get('email'), 'Hisob ochildi. O‘zingiz yaratgan parol bilan kiring.');
   });
 }
 
@@ -167,7 +183,7 @@ function students() {
       action('student:' + s.id, 'Progress', 'light', 'next') + '</div>';
   }).join('');
   return '<div class="headline"><div><h1>O‘quvchilar</h1><p class="subhead">Hisoblar va o‘zlashtirish</p></div>' +
-    action('add-student', 'O‘quvchi qo‘shish', '', 'plus') + '</div><section class="panel">' + (list || empty('O‘quvchi hisoblari hali yaratilmagan.')) + '</section>';
+    action('add-student', 'O‘quvchini taklif qilish', '', 'plus') + '</div><section class="panel">' + (list || empty('O‘quvchi hisoblari hali yaratilmagan.')) + '</section>';
 }
 
 function results() {
@@ -239,13 +255,17 @@ function create() {
 }
 
 function addStudent() {
-  openModal('O‘quvchi qo‘shish', '<form><label>Ism va familiya<input name="name" required maxlength="100"></label><label>Email<input name="email" type="email" required></label>' +
-    '<label>Parol<input name="password" type="password" required minlength="12" maxlength="200" autocomplete="new-password"></label>' +
-    '<p class="help">Kirish ma’lumotlarini o‘quvchiga shaxsan bering.</p>' + submitButton('Hisob yaratish') + '</form>');
+  openModal('O‘quvchini taklif qilish', '<form><label>Ism va familiya<input name="name" required maxlength="100"></label>' +
+    '<label>O‘quvchining emaili<input name="email" type="email" required autocomplete="off"></label>' +
+    submitButton('Taklif kodi yaratish') + '</form>');
   bindForm(modal, async values => {
-    await api('students', Object.fromEntries(values));
-    await refresh();
-    modal.close();
+    const { email, code } = await api('invitations', Object.fromEntries(values));
+    openModal('Taklif kodi tayyor', '<p class="help">Kodni ' + esc(email) +
+      ' egasiga shaxsan bering. Kod 7 kun amal qiladi va bir marta ishlatiladi.</p>' +
+      '<label class="invite-code">Taklif kodi<input readonly value="' + esc(code) + '"></label>');
+    const input = modal.querySelector('input');
+    input.focus();
+    input.select();
   });
 }
 
@@ -327,6 +347,7 @@ async function handleAction(event) {
       filter = key === 'filter' ? value : '';
       render();
     }
+    if (key === 'register') register();
     if (key === 'create') create();
     if (key === 'add-student') addStudent();
     if (key === 'assignment') viewAssignment(dashboard.assignments.find(a => a.id === Number(value)));

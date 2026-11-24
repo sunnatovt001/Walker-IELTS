@@ -13,7 +13,7 @@ WALKER_DEMO=1 npm start
 
 Brauzerda `http://localhost:3000` manzilini oching. Demo ekranida ustoz yoki o‘quvchi hisobini tanlang.
 
-Haqiqiy guruh uchun server muhitida `WALKER_TEACHER_EMAIL` va kamida 12 belgili `WALKER_TEACHER_PASSWORD` ni sozlang va `npm start` buyrug‘ini ishlating. Bu ma’lumotlar bo‘sh bazada ilk ustoz hisobini yaratadi. Ustoz **O‘quvchilar** sahifasida har bir o‘quvchiga hisob ochadi. Internetga joylashda HTTPS reverse proxy va `WALKER_SECURE_COOKIE=1` ishlating.
+Haqiqiy guruh uchun server muhitida `WALKER_TEACHER_EMAIL` va kamida 12 belgili `WALKER_TEACHER_PASSWORD` ni sozlang va `npm start` buyrug‘ini ishlating. Bu ma’lumotlar bo‘sh bazada ilk ustoz hisobini yaratadi. Ustoz **O‘quvchilar** sahifasida o‘quvchining emaili uchun taklif kodi yaratadi va uni o‘quvchiga shaxsan beradi. O‘quvchi kirish ekranida **Taklif kodi bilan hisob ochish** tugmasini bosib, o‘z emailini, kodni va yangi parolni kiritadi. Kod bir marta ishlatiladi va 7 kun amal qiladi. Avval ochilgan hisoblar avvalgi email va paroli bilan ishlaydi. Internetga joylashda HTTPS reverse proxy va `WALKER_SECURE_COOKIE=1` ishlating.
 
 SQLite bazasi odatda `data/live` da, demo bazasi `data/demo` da saqlanadi. Deploymentda `WALKER_DATA` ni zaxiralanadigan doimiy diskdagi papkaga sozlang. `PORT` standart qiymati 3000.
 

@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 
@@ -16,6 +16,10 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY, user INTEGER REFERENCES users(id), expires INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS invitations (
+    email TEXT PRIMARY KEY, name TEXT NOT NULL, teacher INTEGER NOT NULL REFERENCES users(id),
+    code_hash TEXT NOT NULL, expires INTEGER NOT NULL
   );
   CREATE TABLE IF NOT EXISTS assignments (
     id INTEGER PRIMARY KEY, teacher INTEGER REFERENCES users(id), kind TEXT NOT NULL,
@@ -39,10 +43,19 @@ function addUser(name, email, password, teacher = null) {
     .run(name, email, passwordHash(password), teacher).lastInsertRowid;
 }
 
+const emailAddress = value => String(value ?? '').trim().toLowerCase();
+const validEmail = value => value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const validPassword = value => typeof value === 'string' && value.length >= 12 && value.length <= 200;
+const teacherEmail = emailAddress(process.env.WALKER_TEACHER_EMAIL);
+const invitationHash = code => createHash('sha256').update(code).digest('hex');
+if (!demo && teacherEmail && !validEmail(teacherEmail)) throw new Error('WALKER_TEACHER_EMAIL must be a valid email address.');
+
 if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
   const password = demo ? 'WalkerDemo2026' : process.env.WALKER_TEACHER_PASSWORD;
-  if (!password || password.length < 12) throw new Error('Set WALKER_TEACHER_PASSWORD (at least 12 characters) or WALKER_DEMO=1.');
-  const email = (demo ? 'teacher@walker.test' : process.env.WALKER_TEACHER_EMAIL || 'teacher@walker.local').toLowerCase();
+  if (!demo && (!teacherEmail || !validPassword(password))) {
+    throw new Error('Set WALKER_TEACHER_EMAIL and WALKER_TEACHER_PASSWORD (12–200 characters) or WALKER_DEMO=1.');
+  }
+  const email = demo ? 'teacher@walker.test' : teacherEmail;
   const teacher = addUser('Walker Teacher', email, password);
   if (demo) {
     addUser('Madina Karimova', 'student@walker.test', password, teacher);
@@ -54,6 +67,10 @@ if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
     insert.run(teacher, 'Speaking', 'A place you enjoy visiting', 'Describe a place you enjoy visiting. Say where it is, what you do there, and why you enjoy visiting it.', 'Academic', '[]');
     db.prepare('INSERT INTO submissions(assignment,student,response,raw) VALUES(1,2,?,2)').run('["Oslo","Yes"]');
   }
+}
+
+if (!demo && teacherEmail) {
+  db.prepare("UPDATE users SET email=? WHERE teacher IS NULL AND email='teacher@walker.local'").run(teacherEmail);
 }
 
 const kinds = ['Listening', 'Reading', 'Writing', 'Speaking'];
@@ -156,7 +173,7 @@ const server = http.createServer(async (req, res) => {
     const secure = process.env.WALKER_SECURE_COOKIE === '1' ? '; Secure' : '';
     if (path === '/api/login' && post) {
       const { email, password } = await body(req);
-      const user = db.prepare('SELECT * FROM users WHERE email=?').get(normalize(email));
+      const user = db.prepare('SELECT * FROM users WHERE email=?').get(emailAddress(email));
       if (typeof password !== 'string' || password.length > 200) fail(400, 'Parol formati xato.');
       const computed = passwordHash(password, user?.password.split(':')[0] || 'invalid-user');
       if (!user || !timingSafeEqual(Buffer.from(computed), Buffer.from(user.password))) fail(401, 'Email yoki parol xato.');
@@ -166,6 +183,27 @@ const server = http.createServer(async (req, res) => {
       db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(next, user.id, Date.now() + 604800000);
       res.setHeader('Set-Cookie', 'walker=' + next + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800' + secure);
       return send(res, { id: user.id, name: user.name, teacher: user.teacher });
+    }
+    if (path === '/api/register' && post) {
+      const { email, code, password } = await body(req);
+      const address = emailAddress(email);
+      if (!validEmail(address) || typeof code !== 'string' || !/^[A-Za-z0-9_-]{24}$/.test(code.trim()) || !validPassword(password)) {
+        fail(400, 'Email, taklif kodi va 12–200 belgili parol kiriting.');
+      }
+      const invite = db.prepare('SELECT name,teacher FROM invitations WHERE email=? AND code_hash=? AND expires>?')
+        .get(address, invitationHash(code.trim()), Date.now());
+      if (!invite) fail(400, 'Taklif kodi xato yoki muddati tugagan.');
+      if (db.prepare('SELECT 1 FROM users WHERE email=?').get(address)) fail(409, 'Bu emailga hisob ochilgan.');
+      db.exec('BEGIN');
+      try {
+        addUser(invite.name, address, password, invite.teacher);
+        db.prepare('DELETE FROM invitations WHERE email=?').run(address);
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      return send(res, {}, 201);
     }
     if (path === '/api/logout' && post) {
       if (token) db.prepare('DELETE FROM sessions WHERE token=?').run(token);
@@ -184,12 +222,21 @@ const server = http.createServer(async (req, res) => {
         : db.prepare('SELECT ' + submissionColumns + ' FROM submissions WHERE student=? ORDER BY submitted DESC').all(user.id);
       return send(res, { assignments, students, submissions });
     }
-    if (path === '/api/students' && post) {
+    if (path === '/api/invitations' && post) {
       requireTeacher(user);
-      const { name, email, password } = await body(req);
-      if (typeof name !== 'string' || !name.trim() || name.length > 100 || !/^\S+@\S+\.\S+$/.test(normalize(email)) || typeof password !== 'string' || password.length < 12 || password.length > 200) fail(400, 'Ism, email va kamida 12 belgili parol kiriting.');
-      if (db.prepare('SELECT 1 FROM users WHERE email=?').get(normalize(email))) fail(409, 'Bu email band.');
-      return send(res, { id: addUser(name.trim(), normalize(email), password, user.id) }, 201);
+      const { name, email } = await body(req);
+      const address = emailAddress(email);
+      if (typeof name !== 'string' || !name.trim() || name.length > 100 || !validEmail(address)) fail(400, 'Ism va emailni tekshiring.');
+      if (db.prepare('SELECT 1 FROM users WHERE email=?').get(address)) fail(409, 'Bu emailga hisob ochilgan.');
+      const existing = db.prepare('SELECT teacher,expires FROM invitations WHERE email=?').get(address);
+      if (existing && existing.teacher !== user.id && existing.expires > Date.now()) fail(409, 'Bu emailga taklif mavjud.');
+      const code = randomBytes(18).toString('base64url');
+      const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
+      db.prepare(`
+        INSERT INTO invitations(email,name,teacher,code_hash,expires) VALUES (?,?,?,?,?)
+        ON CONFLICT(email) DO UPDATE SET name=excluded.name,teacher=excluded.teacher,code_hash=excluded.code_hash,expires=excluded.expires
+      `).run(address, name.trim(), user.id, invitationHash(code), expires);
+      return send(res, { email: address, code }, 201);
     }
     if (path === '/api/assignments' && post) {
       requireTeacher(user);
