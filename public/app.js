@@ -129,7 +129,7 @@ const initials = name => esc(name.split(/\s+/).slice(0, 2).map(word => word[0]).
 
 function landing() {
   const entry = user ? pathsByPage.home : '/login';
-  const primary = user ? 'Open dashboard' : 'Sign in to Walker IELTS';
+  const primary = user ? 'Open dashboard' : 'Sign in';
   const skills = [
     ['Listening', 'Listen to your assignment recording, then submit your answers.', 'Check your score after you submit.'],
     ['Reading', 'Read the passage and answer the questions your teacher assigned.', 'Check how many answers you got right.'],
@@ -142,25 +142,25 @@ function landing() {
     '<nav aria-label="Main navigation"><a href="#skills" class="landing-nav-link">Explore skills</a>' +
     link(entry, user ? 'Dashboard' : 'Sign in', 'light', 'arrow') + '</nav></div></header>' +
     '<main><section class="landing-hero"><div class="landing-width landing-hero-grid"><div class="landing-intro">' +
-    '<h1>Practice for IELTS<br><em>with your teacher.</em></h1>' +
-    '<p>Complete your assignments, get feedback from your teacher, and track your results across all four IELTS skills.</p>' +
+    '<h1>Build your IELTS skills.<br><em>With your teacher.</em></h1>' +
+    '<p>Complete assignments, get teacher feedback, and track your progress.</p>' +
     '<div class="landing-actions">' + link(entry, primary, 'accent', 'arrow') +
     '<a class="landing-secondary" href="#skills">Explore skills ' + icon('next', 15) + '</a></div></div>' +
     '<div class="landing-preview">' +
-    '<div class="landing-preview-card"><div class="landing-preview-header">' +
+    '<div class="landing-preview-card"><img class="landing-paper" src="/assignment-paper.webp" width="800" height="600" alt=""><div class="landing-preview-header">' +
     tile('tasks', 'blue-soft') + '<div><h2>Assignments</h2><p>Example workspace</p></div></div>' +
     '<div class="landing-preview-rows">' +
     [['listening', 'Campus tour', 'Listening', 'To do'], ['reading', 'Urban transport', 'Reading', '7.0 band'], ['writing', 'Education and technology', 'Writing', 'In review']].map(([key, title, kind, status]) =>
       '<div class="landing-preview-row">' + tile(key) + '<div class="grow"><strong>' + title + '</strong><small>' + kind + '</small></div>' +
-      '<span class="pill' + (status === 'In review' ? ' pending' : '') + '">' + status + '</span></div>').join('') +
+      '<span class="pill' + (status === 'In review' ? ' pending' : status === '7.0 band' ? ' scored' : '') + '">' + status + '</span></div>').join('') +
     '</div></div></div>' +
     '</div></section><section class="landing-width landing-skills" id="skills"><h2>Practice all four skills</h2>' +
     '<div class="landing-notebook">' + skills.map(([kind, description, outcome]) =>
-      '<article class="landing-note"><div class="landing-note-title">' + tile(kind.toLowerCase()) +
-      '<h3>' + kind + '</h3></div><p>' + description + '</p><p class="landing-note-outcome">' + outcome + '</p></article>').join('') +
+      '<article class="landing-note"><img class="landing-paper" src="/notebook-paper.webp" width="1200" height="300" alt="" loading="lazy">' +
+      tile(kind.toLowerCase()) + '<div><h3>' + kind + '</h3><p>' + description + ' ' + outcome + '</p></div></article>').join('') +
     '</div></section></main><footer class="landing-footer"><div class="landing-width landing-bar">' +
     '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brand + '</a>' +
-    link(entry, user ? 'Dashboard' : 'Sign in', 'light', 'arrow') + '</div></footer></div>';
+    link(entry, user ? 'Dashboard' : 'Sign in', 'accent', 'arrow') + '</div></footer></div>';
   if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     notebookObserver = new IntersectionObserver((entries, observer) => {
       let delay = 0;
