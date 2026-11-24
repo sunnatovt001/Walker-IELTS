@@ -26,11 +26,12 @@ const brand = '<div class="brand"><div class="logo">' + icon('logo', 24) + '</di
 const labels = { home: 'Dashboard', tasks: 'Assignments', students: 'Students', results: 'Results' };
 let user;
 let demo;
-const pathsByPage = { home: '/', tasks: '/assignments', students: '/students', results: '/results' };
+const pathsByPage = { home: '/dashboard', tasks: '/assignments', students: '/students', results: '/results' };
 const skillPath = kind => pathsByPage.tasks + (kind ? '/' + kind.toLowerCase() : '');
 
 function readRoute(path = location.pathname) {
   const normalized = path.replace(/\/$/, '') || '/';
+  if (normalized === '/') return { page: 'landing' };
   if (normalized === '/login') return { page: 'login' };
   for (const [page, url] of Object.entries(pathsByPage)) {
     if (url === normalized) return { page };
@@ -56,18 +57,22 @@ function navigate(path, { replace = false, detail = false } = {}) {
 function showRoute() {
   const route = readRoute();
   if (modal.open) modal.close();
+  if (route.page === 'landing') {
+    landing();
+    return;
+  }
   if (!user) {
     if (route.page !== 'login') {
-      const next = route.page === 'not-found' ? '/' : location.pathname;
-      history.replaceState(null, '', '/login' + (next === '/' ? '' : '?next=' + encodeURIComponent(next)));
+      const next = route.page === 'not-found' ? pathsByPage.home : location.pathname;
+      history.replaceState(null, '', '/login' + (next === pathsByPage.home ? '' : '?next=' + encodeURIComponent(next)));
     }
     login();
     return;
   }
   if (route.page === 'login') {
     const next = new URLSearchParams(location.search).get('next');
-    const validNext = next?.startsWith('/') && !next.startsWith('//') && !['login', 'not-found'].includes(readRoute(next).page);
-    navigate(validNext ? next : '/', { replace: true });
+    const validNext = next?.startsWith('/') && !next.startsWith('//') && !['landing', 'login', 'not-found'].includes(readRoute(next).page);
+    navigate(validNext ? next : pathsByPage.home, { replace: true });
     return;
   }
   if (!dashboard) return;
@@ -121,6 +126,40 @@ const link = (path, text, style = 'light', glyph = '') =>
   '<a class="btn ' + style + '" href="' + path + '" data-route>' + (glyph ? icon(glyph, 16) : '') + text + '</a>';
 const initials = name => esc(name.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase());
 
+function landing() {
+  const entry = user ? pathsByPage.home : '/login';
+  const primary = user ? 'Open dashboard' : 'Sign in to Walker IELTS';
+  const skills = [
+    ['Listening', 'Listen to recordings and submit your answers.'],
+    ['Reading', 'Read exam passages and check your answers.'],
+    ['Writing', 'Submit written responses and get feedback on IELTS criteria.'],
+    ['Speaking', 'Upload spoken responses for your teacher to review.']
+  ];
+  document.title = 'Walker IELTS | Practice and progress';
+  app.innerHTML = '<div class="landing"><header class="landing-header"><div class="landing-width landing-bar">' +
+    '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brand + '</a>' +
+    '<nav aria-label="Main navigation"><a href="#skills" class="landing-nav-link">Explore skills</a>' +
+    link(entry, user ? 'Dashboard' : 'Sign in', 'light', 'arrow') + '</nav></div></header>' +
+    '<main><section class="landing-hero"><div class="landing-width landing-hero-grid"><div class="landing-intro">' +
+    '<h1>IELTS practice.<br><em>Clear progress.</em></h1>' +
+    '<p>Complete your assignments, get feedback from your teacher, and track your results across all four IELTS skills.</p>' +
+    '<div class="landing-actions">' + link(entry, primary, 'lime', 'arrow') +
+    '<a class="landing-secondary" href="#skills">Explore skills ' + icon('next', 15) + '</a></div></div>' +
+    '<div class="landing-preview"><div class="landing-preview-card"><div class="landing-preview-header">' +
+    tile('tasks', 'sage') + '<div><h2>Assignments</h2><p>Example workspace</p></div></div>' +
+    '<div class="landing-preview-rows">' +
+    [['listening', 'Campus tour', 'Listening', 'To do'], ['reading', 'Urban transport', 'Reading', '7.0 band'], ['writing', 'Education and technology', 'Writing', 'In review']].map(([key, title, kind, status]) =>
+      '<div class="landing-preview-row">' + tile(key) + '<div class="grow"><strong>' + title + '</strong><small>' + kind + '</small></div>' +
+      '<span class="pill' + (status === 'In review' ? ' pending' : '') + '">' + status + '</span></div>').join('') +
+    '</div></div></div>' +
+    '</div></section><section class="landing-width landing-skills" id="skills"><h2>Practice all four skills</h2>' +
+    '<div class="landing-skill-grid">' + skills.map(([kind, description]) =>
+      '<article class="landing-skill">' + tile(kind.toLowerCase()) + '<h3>' + kind + '</h3><p>' + description + '</p></article>').join('') +
+    '</div></section></main><footer class="landing-footer"><div class="landing-width landing-bar">' +
+    '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brand + '</a>' +
+    link(entry, user ? 'Dashboard' : 'Sign in', 'light', 'arrow') + '</div></footer></div>';
+}
+
 function login(email = '', message = '') {
   document.title = 'Sign in | Walker IELTS';
   app.innerHTML = '<main class="login"><section class="login-aside">' + brand +
@@ -131,6 +170,7 @@ function login(email = '', message = '') {
     '<label>Password<input required type="password" name="password" autocomplete="current-password"></label>' +
     errorLine + '<button type="submit" class="btn">Sign in ' + icon('arrow', 16) + '</button></form>' +
     '<div>' + action('register', 'Create an account with an invite code') + '</div>' +
+    '<a href="/" data-route>Back to home</a>' +
     (demo ? '<div class="demo-buttons">' + action('demo-teacher', 'Teacher demo') + action('demo-student', 'Student demo') + '</div>' : '') +
     '</div></section></main>';
   bindForm(app, values => signIn(Object.fromEntries(values)));
@@ -247,7 +287,7 @@ function render(route) {
   const navigation = ['home', 'tasks', ...(teacher() ? ['students'] : []), 'results'];
   const unavailable = page === 'not-found' || (page === 'students' && !teacher());
   const title = unavailable ? 'Page not found' : labels[page];
-  const view = unavailable ? () => '<div class="headline"><h1>Page not found</h1></div>' + link('/', 'Back to dashboard')
+  const view = unavailable ? () => '<div class="headline"><h1>Page not found</h1></div>' + link(pathsByPage.home, 'Back to dashboard')
     : { home, tasks, students, results }[page];
   document.title = title + ' | Walker IELTS';
   app.innerHTML = '<div class="shell"><aside class="sidebar">' + brand + '<div class="label">WORKSPACE</div><nav class="nav" aria-label="Workspace">' +
@@ -399,6 +439,14 @@ async function handleAction(event) {
   if (anchor && !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     const route = readRoute(anchor.pathname);
+    if (user && !dashboard && !['landing', 'login'].includes(route.page)) {
+      try {
+        dashboard = await api('dashboard');
+      } catch (error) {
+        location.assign(anchor.href);
+        return;
+      }
+    }
     navigate(anchor.pathname, { detail: Boolean(route.assignment || route.student || route.result) });
     return;
   }
@@ -428,11 +476,14 @@ modal.addEventListener('close', () => {
   if (history.state?.detail) history.back();
   else navigate(pathsByPage[route.page], { replace: true });
 });
+if (readRoute().page === 'landing') landing();
 try {
   ({ user, demo, maxUpload } = await api('session'));
-  if (user) await refresh();
+  if (user && readRoute().page !== 'landing') await refresh();
   else showRoute();
 } catch (error) {
-  app.innerHTML = '<main class="content"><p class="error" role="alert"></p></main>';
-  showError(error);
+  if (readRoute().page !== 'landing') {
+    app.innerHTML = '<main class="content"><p class="error" role="alert"></p></main>';
+    showError(error);
+  }
 }

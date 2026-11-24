@@ -187,7 +187,7 @@ export async function handler(req, res) {
       : url.pathname;
     const post = req.method === 'POST';
     if (post && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) fail(415, 'Send a JSON request.');
-    const pageRoute = /^\/(?:login|assignments(?:\/(?:listening|reading|writing|speaking|\d+))?|students(?:\/\d+)?|results(?:\/\d+\/\d+)?)\/?$/.test(path);
+    const pageRoute = /^\/(?:login|dashboard|assignments(?:\/(?:listening|reading|writing|speaking|\d+))?|students(?:\/\d+)?|results(?:\/\d+\/\d+)?)\/?$/.test(path);
     const asset = publicFiles[pageRoute ? '/' : path];
     if (req.method === 'GET' && Array.isArray(asset)) {
       const [name, contentType] = asset;
