@@ -141,7 +141,7 @@ function landing() {
   app.innerHTML = '<div class="landing"><img class="landing-desk" src="/landing-desk.webp" width="1200" height="900" alt="" fetchpriority="high"><header class="landing-header"><div class="landing-width landing-bar">' +
     '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brand + '</a>' +
     '<nav aria-label="Main navigation"><a href="#skills" class="landing-nav-link">Explore skills</a>' +
-    link(entry, user ? 'Dashboard' : 'Sign in', 'light', 'arrow') + '</nav></div></header>' +
+    link(entry, user ? 'Dashboard' : 'Sign in', 'accent', 'arrow') + '</nav></div></header>' +
     '<main><section class="landing-hero"><div class="landing-width landing-hero-grid"><div class="landing-intro">' +
     '<h1>Build your IELTS skills.<br><em>With your teacher.</em></h1>' +
     '<p>Complete assignments, get teacher feedback, and track your progress.</p>' +

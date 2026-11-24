@@ -111,9 +111,9 @@ input[type=file]{max-width:100%}
 .landing{position:relative;isolation:isolate;background:#081e38;min-height:100vh;color:#fffaf2}
 .landing-width{width:min(1280px,calc(100% - 96px));margin-inline:auto}
 .landing-header{position:sticky;top:0;z-index:10;isolation:isolate;color:#fff;transition:top 220ms ease}
-.landing-header::before{content:"";position:absolute;inset:0;z-index:-1;background:#081e38c9;pointer-events:none;border:1px solid transparent;transition:inset 220ms ease,border-radius 220ms ease,background-color 220ms ease,box-shadow 220ms ease}
+.landing-header::before{content:"";position:absolute;inset:0;z-index:-1;background:#681b2b;pointer-events:none;border:1px solid transparent;transition:inset 220ms ease,border-radius 220ms ease,background-color 220ms ease,box-shadow 220ms ease}
 .landing-header-floating{top:12px}
-.landing-header-floating::before{inset:0 max(10px,calc((100% - 1320px)/2));border-radius:22px;background:#081e38f2;border-color:#ffffff26;box-shadow:0 8px 24px #0005}
+.landing-header-floating::before{inset:0 max(10px,calc((100% - 1320px)/2));border-radius:22px;border-color:#ffffff26;box-shadow:0 8px 24px #0005}
 .landing-footer{background:#081e38c9;color:#fff}
 .landing-bar{display:flex;align-items:center;justify-content:space-between;gap:18px;min-height:82px}
 .landing-brand{text-decoration:none}
@@ -121,7 +121,7 @@ input[type=file]{max-width:100%}
 .landing-bar nav,.landing-actions{display:flex;align-items:center;gap:24px}
 .landing-nav-link,.landing-secondary{font-weight:700;text-decoration:none;font-size:14px}
 .landing-nav-link{color:#e0eaf6}
-.landing-bar .btn.light{background:#ffffff0a;color:#f3f7fc;border-color:#ffffff54;padding:11px 16px}
+.landing-header .btn{padding:11px 16px}
 .landing-hero-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:center;gap:clamp(24px,4vw,52px);padding-block:104px 64px;min-height:clamp(490px,65svh,660px)}
 .landing-intro h1{font-size:clamp(38px,4vw,58px);line-height:1.04;letter-spacing:-.057em;font-weight:800}
 .landing-intro h1 em{color:#fff0e0;font-style:normal}
