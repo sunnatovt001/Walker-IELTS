@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check oauth.js && node --check api/walker.js && node --check public/app.js"
+    "check": "node --check server.js && node --check oauth.js && node --check reading.js && node --check api/walker.js && node --check public/app.js"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

@@ -57,6 +57,10 @@ Vercel → **Settings → Environment Variables** bo‘limida **Production** uch
 
 Testlarni faqat admin qo‘shishi, tahrirlashi va o‘chirishi mumkin. Ustoz avvalgidek o‘quvchilarni taklif qiladi va natijalarni baholaydi. Javoblar topshirilgach test turi va javob kaliti saqlanadi, sarlavha, muddat va kontentni tahrirlash mumkin. O‘chirish test va uning topshirilgan javoblarini bazadan olib tashlaydi.
 
+## CD Reading testlarini import qilish
+
+`/admin` → **Import CD Reading** orqali Walker CD JSON paketini yuklang. Testni tanlab **Review test** tugmasini bosing, uchta passage, savollar, variantlar va javob kalitini ko‘rib chiqing va **Publish assignment** ni bosing. Fayl admin uchun mo‘ljallangan va javob kalitlarini o‘z ichiga oladi. Testlar bittadan e’lon qilinadi. O‘quvchilar testni Reading bo‘limidan ochib, passage va savollar orasida o‘tadi va topshirgach savolma-savol natijani ko‘radi.
+
 ## Vazifalar va baholash
 
 - **Reading va Listening.** Ustoz PDF fayl va javob kalitini yuklaydi. Sayt PDF matnini chiqarib, faylni va raqamlangan javob maydonlarini vazifaga biriktiradi. Skanerlangan PDF faylning o‘zi ochiladi. Listening uchun audio ham yuklanadi. Kalitda har qator bitta savolga mos keladi va muqobil javoblar `|` orqali ko‘rsatiladi.

@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { gradeAnswers, questionGroups, readCdPrompt, validatedReading } from './reading.js';
 import { authorizationUrl, oauthDigest, oauthToken, providerConfig, verifiedIdentity, workspacePath } from './oauth.js';
 import { createClient } from '@libsql/client';
 import { extractText, getDocumentProxy } from 'unpdf';
@@ -308,36 +309,58 @@ async function adminSession(res, hash) {
 
 async function saveAssignment(form, owner, existing) {
   const objective = ['Reading', 'Listening'].includes(form.kind);
+  const cd = form.kind === 'Reading' && form.cd !== undefined;
   const title = String(form.title || '').trim();
   const due = String(form.due || '');
   const level = form.kind === 'Reading' && form.level === 'General' ? 'General' : 'Academic';
   if (!kinds.includes(form.kind) || !title || title.length > 180 || (due && !/^\d{4}-\d{2}-\d{2}$/.test(due))) fail(400, 'Check the assignment details.');
   const preserveFiles = existing?.kind === form.kind;
-  const newPdf = objective ? file(form.pdf, 'pdf') : null;
-  const pdf = objective ? newPdf || (preserveFiles ? existing.pdf : null) : null;
+  const newPdf = objective && !cd ? file(form.pdf, 'pdf') : null;
+  const pdf = objective && !cd ? newPdf || (preserveFiles ? existing.pdf : null) : null;
   const newAudio = form.kind === 'Listening' ? file(form.audio, 'audio') : null;
   const audio = form.kind === 'Listening' ? newAudio || (preserveFiles ? existing.audio : null) : null;
   const audioType = newAudio ? form.audio.type : audio ? existing.audio_type : null;
   if (vercel && (pdf?.byteLength || 0) + (audio?.byteLength || 0) > fileLimit) fail(413, 'The PDF and audio together must be at most 3 MB.');
   // Older demo and imported assignments can contain an inline text passage.
-  if (objective && !pdf && !preserveFiles) fail(400, 'Upload a PDF file.');
+  if (objective && !cd && !pdf && !preserveFiles) fail(400, 'Upload a PDF file.');
   if (form.kind === 'Listening' && !audio) fail(400, 'Upload the listening audio file.');
   const keys = objective ? String(form.keys || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean) : [];
   if (objective && (!keys.length || keys.length > 40 || keys.some(line => !line.split('|').some(normalize)))) fail(400, 'Enter 1–40 answers in the answer key, one per line.');
   const encodedKeys = JSON.stringify(keys);
-  const prompt = objective ? (newPdf ? await extractPDF(newPdf) : existing.prompt) : String(form.prompt || '').trim();
+  const prompt = cd ? validatedReading(form.cd, keys) : objective
+    ? (newPdf ? await extractPDF(newPdf) : existing.prompt) : String(form.prompt || '').trim();
   if (!objective && (!prompt || prompt.length > 40000)) fail(400, 'Enter the assignment prompt.');
   const values = [form.kind, title, prompt, due || null, level, encodedKeys, pdf, audio, audioType];
   if (!existing) {
     const result = await run('INSERT INTO assignments(teacher,kind,title,prompt,due,level,keys,pdf,audio,audio_type) VALUES (?,?,?,?,?,?,?,?,?,?)', owner.id, ...values);
     return Number(result.lastInsertRowid);
   }
-  const gradingChanged = existing.kind !== form.kind || existing.keys !== encodedKeys || existing.level !== level;
+  const oldSections = readCdPrompt(existing.prompt);
+  const sectionGrading = sections => sections && questionGroups(sections).map(group => [group.numbers, group.unordered]);
+  const gradingChanged = existing.kind !== form.kind || existing.keys !== encodedKeys || existing.level !== level ||
+    JSON.stringify(sectionGrading(oldSections)) !== JSON.stringify(sectionGrading(readCdPrompt(prompt)));
   const result = await run(`UPDATE assignments SET kind=?,title=?,prompt=?,due=?,level=?,keys=?,pdf=?,audio=?,audio_type=?
     WHERE id=? AND teacher=? AND (?=0 OR NOT EXISTS (SELECT 1 FROM submissions WHERE assignment=assignments.id))`,
     ...values, existing.id, owner.id, Number(gradingChanged));
   if (!result.rowsAffected) fail(409, 'The assignment was removed, or its skill, reading type or answer key is locked by submissions.');
   return existing.id;
+}
+
+function answerReview(submission, assignment) {
+  if (!assignment?.questions) return submission;
+  const answers = JSON.parse(submission.response);
+  const correct = gradeAnswers(answers, assignment.keys, assignment.cd, normalize);
+  const groups = assignment.cd ? questionGroups(assignment.cd) : [{ numbers: answers.map((_, index) => index + 1) }];
+  let offset = 0;
+  const checks = groups.flatMap(group => {
+    const groupedKey = group.unordered
+      ? assignment.keys.slice(offset, offset + group.numbers.length).join(', ') + ' (any order)' : '';
+    return group.numbers.map(number => {
+      const index = offset++;
+      return { number, answer: answers[index], correct: correct[index], key: groupedKey || assignment.keys[index] };
+    });
+  });
+  return { ...submission, checks };
 }
 
 async function handleAdmin(req, res, path) {
@@ -396,7 +419,10 @@ async function handleAdmin(req, res, path) {
     if (req.method === 'GET') {
       const assignments = await all('SELECT ' + assignmentColumns +
         ', (SELECT COUNT(*) FROM submissions WHERE assignment=assignments.id) AS submissionCount FROM assignments WHERE teacher=? ORDER BY id DESC', owner.id);
-      return send(res, assignments.map(assignment => ({ ...assignment, keys: JSON.parse(assignment.keys) })));
+      return send(res, assignments.map(assignment => {
+        const cd = assignment.kind === 'Reading' ? readCdPrompt(assignment.prompt) : null;
+        return { ...assignment, prompt: cd ? '' : assignment.prompt, cd, keys: JSON.parse(assignment.keys) };
+      }));
     }
     if (req.method === 'POST') return send(res, { id: await saveAssignment(await body(req), owner) }, 201);
   }
@@ -492,12 +518,18 @@ export async function handler(req, res) {
     const isTeacher = user.teacher === null;
     if (path === '/api/dashboard' && !post) {
       const assignments = (await all('SELECT ' + assignmentColumns + ' FROM assignments WHERE teacher=? ORDER BY id DESC', user.teacher ?? user.id))
-        .map(({keys, ...row}) => ({ ...row, questions: JSON.parse(keys).length, ...(isTeacher ? { keys: JSON.parse(keys) } : {}) }));
+        .map(({ keys, ...row }) => {
+          const cd = row.kind === 'Reading' ? readCdPrompt(row.prompt) : null;
+          const keyList = JSON.parse(keys);
+          return { ...row, prompt: cd ? '' : row.prompt, cd, questions: keyList.length, keys: keyList };
+        });
       const students = isTeacher ? await all('SELECT id,name,email FROM users WHERE teacher=? ORDER BY name', user.id) : [];
       const submissions = isTeacher
         ? await all('SELECT ' + submissionColumns + ' FROM submissions WHERE assignment IN (SELECT id FROM assignments WHERE teacher=?) ORDER BY submitted DESC', user.id)
         : await all('SELECT ' + submissionColumns + ' FROM submissions WHERE student=? ORDER BY submitted DESC', user.id);
-      return send(res, { assignments, students, submissions });
+      const byAssignment = new Map(assignments.map(assignment => [assignment.id, assignment]));
+      const results = submissions.map(submission => answerReview(submission, byAssignment.get(submission.assignment)));
+      return send(res, { assignments: isTeacher ? assignments : assignments.map(({ keys, ...assignment }) => assignment), students, submissions: results });
     }
     if (path === '/api/invitations' && post) {
       requireTeacher(user);
@@ -536,7 +568,7 @@ export async function handler(req, res) {
       if (keys.length) {
         if (!Array.isArray(form.answers) || form.answers.length !== keys.length || form.answers.some(value => typeof value !== 'string' || value.length > 500)) fail(400, 'Check the number and length of your answers.');
         response = JSON.stringify(form.answers);
-        raw = keys.filter((key, i) => normalize(form.answers[i]) && key.split('|').some(option => normalize(option) === normalize(form.answers[i]))).length;
+        raw = gradeAnswers(form.answers, keys, readCdPrompt(assignment.prompt), normalize).filter(Boolean).length;
         if (keys.length === 40) band = benchmarks[assignment.kind === 'Listening' ? 'Listening' : assignment.level].find(([minimum]) => raw >= minimum)[1];
       } else if (assignment.kind === 'Speaking') {
         audio = file(form.audio, 'audio');
@@ -546,8 +578,8 @@ export async function handler(req, res) {
         if (!response || response.length > 40000) fail(400, 'Enter your writing response.');
       }
       const result = await run(`INSERT OR IGNORE INTO submissions(assignment,student,response,audio,audio_type,raw,band)
-        SELECT id,?,?,?,?,?,? FROM assignments WHERE id=? AND kind=? AND level=? AND keys=?`,
-        user.id, response, audio, audio ? form.audio.type : null, raw, band, assignment.id, assignment.kind, assignment.level, assignment.keys);
+        SELECT id,?,?,?,?,?,? FROM assignments WHERE id=? AND kind=? AND level=? AND keys=? AND prompt=?`,
+        user.id, response, audio, audio ? form.audio.type : null, raw, band, assignment.id, assignment.kind, assignment.level, assignment.keys, assignment.prompt);
       if (!result.rowsAffected) fail(409, 'You already submitted this assignment, or it changed. Refresh and try again.');
       return send(res, { raw, band }, 201);
     }

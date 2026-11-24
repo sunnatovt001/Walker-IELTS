@@ -404,7 +404,8 @@ function render(route) {
   if (route.result) viewResult(...route.result);
 }
 
-function openModal(title, contents) {
+function openModal(title, contents, wide = false) {
+  modal.classList.toggle('cd-dialog', wide);
   modal.innerHTML = '<div class="modal-inner"><div class="headline"><h2 id="modal-title">' + esc(title) +
     '</h2><button type="button" class="modal-close" data-action="close" aria-label="Close">' + icon('close', 18) + '</button></div>' + contents + '</div>';
   modal.setAttribute('aria-labelledby', 'modal-title');
@@ -463,7 +464,8 @@ async function showAdminAssignments(message = '') {
     action('admin-logout', 'Sign out', 'light', 'logout') + '</div></header>' +
     '<main class="admin-content"><div class="headline"><div><h1>Manage assignments</h1>' +
     '<p class="subhead">Publish and manage IELTS tests for your class.</p></div>' +
-    action('admin-create', 'New assignment', 'accent', 'plus') + '</div>' +
+    '<div class="admin-actions">' + action('admin-import-reading', 'Import CD Reading', 'light') +
+    action('admin-create', 'New assignment', 'accent', 'plus') + '</div></div>' +
     (message ? '<p class="notice" role="status">' + esc(message) + '</p>' : '') + errorLine +
     '<section class="panel" aria-label="Assignments">' + (assignments.map(assignment =>
       '<article class="row admin-assignment">' + tile(assignment.kind.toLowerCase()) +
@@ -475,6 +477,7 @@ async function showAdminAssignments(message = '') {
 }
 
 function editAssignment(existing) {
+  if (existing?.cd) return editCdReading(existing);
   const locked = Boolean(existing?.submissionCount);
   openModal(existing ? 'Edit assignment' : 'New assignment', '<form><label>Skill<select name="kind"' + (locked ? ' disabled' : '') + '>' +
     kinds.map(kind => '<option' + (kind === existing?.kind ? ' selected' : '') + '>' + kind + '</option>').join('') +
@@ -522,6 +525,87 @@ function editAssignment(existing) {
   });
 }
 
+let readingPack = [];
+
+function importCdReading() {
+  openModal('Import CD Reading', '<form><label>Reading pack JSON<input type="file" name="pack" accept=".json,application/json"></label>' +
+    '<label>Test<select name="test" aria-label="Test" required></select></label>' + submitButton('Review test') + '</form>');
+  const input = modal.querySelector('[name=pack]');
+  const picker = modal.querySelector('[name=test]');
+  function listTests() {
+    picker.innerHTML = readingPack.length ? readingPack.map((test, index) =>
+      '<option value="' + index + '">' + esc(test.title) + '</option>').join('') : '<option value="">Select a reading pack</option>';
+  }
+  listTests();
+  input.onchange = async () => {
+    readingPack = [];
+    try {
+      const file = input.files[0];
+      if (!file || file.size > 2 * 1024 * 1024) throw new Error('Select a reading pack under 2 MB.');
+      const pack = JSON.parse(await file.text());
+      if (pack.format !== 'walker-reading-cd-v1' || !Array.isArray(pack.tests) || !pack.tests.length ||
+          pack.tests.some(test => !test || typeof test.title !== 'string' || !Array.isArray(test.sections) ||
+            !Array.isArray(test.keys) || test.sections.some(section => !section || !Array.isArray(section.groups) || section.groups.some(group => !group || !Array.isArray(group.numbers))))) {
+        throw new Error('Select a valid Walker IELTS CD reading pack.');
+      }
+      readingPack = pack.tests;
+      modal.querySelector('[role=alert]').textContent = '';
+    } catch (error) {
+      showError(error, modal);
+    }
+    listTests();
+  };
+  bindForm(modal, values => {
+    const test = readingPack[Number(values.get('test'))];
+    if (!test) return;
+    editCdReading({ ...test, cd: test.sections });
+  });
+}
+
+function editCdReading(test) {
+  const locked = Boolean(test.submissionCount);
+  const notes = Array.isArray(test.review) ? test.review : [];
+  let answerIndex = 0;
+  const details = test.cd.map((section, sectionIndex) => '<details class="cd-editor"><summary>Passage ' +
+    (sectionIndex + 1) + ' · ' + esc(section.title) + '</summary><label>Passage title<input name="title-' + sectionIndex + '" required maxlength="180" value="' +
+    esc(section.title) + '"></label><label>Reading passage<textarea name="passage-' + sectionIndex + '" required maxlength="40000">' +
+    esc(section.passage) + '</textarea></label>' + section.groups.map((group, groupIndex) => {
+      const name = sectionIndex + '-' + groupIndex;
+      return '<label>Questions ' + group.numbers.map(esc).join(', ') + '<textarea name="group-' + name + '" required maxlength="18000">' +
+        esc(group.text) + '</textarea></label><label>Choices (separate with |)<input name="choices-' + name + '" value="' +
+        esc(Array.isArray(group.choices) ? group.choices.join(' | ') : '') + '"></label><div class="answer-grid">' + group.numbers.map(number => {
+          const index = answerIndex++;
+          return '<label>Answer ' + esc(number) + '<input name="key-' + index + '" required' + (locked ? ' readonly' : '') +
+            ' value="' + esc(test.keys[index]) + '"></label>';
+        }).join('') + '</div>';
+    }).join('') + '</details>').join('');
+  openModal(test.id ? 'Edit CD Reading' : 'Review CD Reading', '<form><label>Title<input name="title" required maxlength="180" value="' +
+    esc(test.title) + '"></label><label>Due date<input name="due" type="date" value="' + esc(test.due) + '"></label>' +
+    (notes.length ? '<div class="notice"><strong>Check the source before publishing</strong><ul>' + notes.map(note => '<li>' + esc(note) + '</li>').join('') + '</ul></div>' : '') +
+    details + (!test.id ? '<label class="cd-confirm"><input type="checkbox" required> I have reviewed the passages, questions, and answer key.</label>' : '') +
+    submitButton(test.id ? 'Save changes' : 'Publish assignment') + '</form>', true);
+  // Open a collapsed section if one of its required fields fails browser validation.
+  modal.querySelector('form').addEventListener('invalid', event => {
+    const section = event.target.closest('details');
+    if (section) section.open = true;
+  }, true);
+  bindForm(modal, async values => {
+    const cd = test.cd.map((section, sectionIndex) => ({
+      title: values.get('title-' + sectionIndex), passage: values.get('passage-' + sectionIndex),
+      groups: section.groups.map((group, groupIndex) => {
+        const name = sectionIndex + '-' + groupIndex;
+        return { ...group, text: values.get('group-' + name),
+          choices: String(values.get('choices-' + name)).split('|').map(choice => choice.trim()).filter(Boolean) };
+      })
+    }));
+    const keys = test.keys.map((_, index) => values.get('key-' + index)).join('\n');
+    await api(test.id ? 'admin/assignments/' + test.id + '/edit' : 'admin/assignments',
+      { kind: 'Reading', title: values.get('title'), due: values.get('due'), keys, cd });
+    modal.close();
+    await showAdminAssignments(test.id ? 'Assignment updated.' : 'Assignment published.');
+  });
+}
+
 function deleteAssignment(assignment) {
   openModal('Delete assignment', '<form><p>Delete <strong>' + esc(assignment.title) + '</strong> and all of its submissions? This is permanent.</p>' +
     '<div class="admin-actions">' + action('close', 'Cancel') +
@@ -564,6 +648,7 @@ function addStudent() {
 
 function viewAssignment(a) {
   const result = dashboard.submissions.find(row => row.assignment === a.id);
+  if (a.cd && !teacher() && !result) return takeCdReading(a);
   const media = (a.hasPdf ? '<a href="/api/assignments/' + a.id + '/pdf" target="_blank" rel="noopener">Open PDF ↗</a>' : '') +
     (a.hasAudio ? '<audio controls preload="none" src="/api/assignments/' + a.id + '/audio"></audio>' : '');
   const questions = Array.from({ length: a.questions }, (_, i) => '<label>' + (i + 1) + '. Answer<input name="a' + i + '" maxlength="500"></label>').join('');
@@ -571,6 +656,7 @@ function viewAssignment(a) {
     : a.kind === 'Speaking' ? '<label>Audio response<input name="audio" type="file" accept="audio/*" required></label>'
     : '<label>Writing response<textarea name="response" required maxlength="40000"></textarea></label>';
   openModal(a.title, '<span class="pill">' + a.kind + (a.due ? ' · ' + esc(a.due) : '') + '</span>' +
+    (a.cd ? '<p class="help">Computer-delivered Reading · ' + a.questions + ' questions</p>' : '') +
     (a.prompt ? '<div class="prompt">' + esc(a.prompt) + '</div>' : '') + (media ? '<div class="media">' + media + '</div>' : '') +
     (teacher() ? (a.questions ? '<div class="notice"><strong>Answer key</strong><ol>' + a.keys.map(key => '<li>' + esc(key) + '</li>').join('') + '</ol></div>' : '') :
       result ? '<div class="notice">' + esc(score(result, a)) + '</div>' + link('/results/' + a.id + '/' + user.id, 'View result') :
@@ -583,6 +669,51 @@ function viewAssignment(a) {
   });
 }
 
+function takeCdReading(assignment) {
+  const tabs = assignment.cd.map((_, index) => '<button type="button" class="btn light" data-cd-part="' + index +
+    '">Passage ' + (index + 1) + '</button>').join('');
+  let answerIndex = 0;
+  const sections = assignment.cd.map((section, index) => '<section class="cd-part" ' + (index ? 'hidden' : '') + '>' +
+    '<div class="cd-passage" tabindex="0" aria-label="Reading passage"><h3>' + esc(section.title) + '</h3><div>' +
+    esc(section.passage) + '</div></div><div class="cd-questions" tabindex="0" aria-label="Questions">' +
+    section.groups.map(group => '<div class="cd-question-group"><div class="cd-question-text">' + esc(group.text) +
+      '</div><div class="answer-grid">' + group.numbers.map(number => {
+        const field = 'cd-answer-' + answerIndex++;
+        return '<label><span id="' + field + '-label">Answer ' + number + '</span>' +
+          (group.choices.length ? '<select id="' + field + '" name="' + field + '" aria-labelledby="' + field + '-label">' +
+          '<option value="">Select an answer</option>' + group.choices.map(choice => '<option>' + esc(choice) + '</option>').join('') + '</select>'
+          : '<input id="' + field + '" name="' + field + '" maxlength="500" autocomplete="off">') + '</label>';
+      }).join('') + '</div></div>').join('') + '</div></section>').join('');
+  const numbers = assignment.cd.flatMap((section, index) => section.groups.flatMap(group =>
+    group.numbers.map(number => [index, number])));
+  openModal(assignment.title, '<form class="cd-test"><nav class="cd-tabs" aria-label="Passages">' + tabs + '</nav>' + sections +
+    '<nav class="cd-numbers" aria-label="Question numbers">' + numbers.map(([part, number], index) =>
+      '<button type="button" class="btn light" data-cd-part="' + part + '" data-cd-answer="' + index + '">' + number + '</button>').join('') +
+    '</nav>' + submitButton('Submit assignment') + '</form>', true);
+  const panels = [...modal.querySelectorAll('.cd-part')];
+  const tabButtons = [...modal.querySelectorAll('.cd-tabs button')];
+  const questionButtons = [...modal.querySelectorAll('.cd-numbers button')];
+  function select(part) {
+    panels.forEach((panel, index) => { panel.hidden = index !== part; });
+    tabButtons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === part)));
+  }
+  select(0);
+  for (const button of [...tabButtons, ...questionButtons]) button.onclick = () => {
+    select(Number(button.dataset.cdPart));
+    if (button.dataset.cdAnswer !== undefined) modal.querySelector('#cd-answer-' + button.dataset.cdAnswer).focus();
+  };
+  questionButtons.forEach((button, index) => {
+    const field = modal.querySelector('#cd-answer-' + index);
+    field.oninput = () => button.classList.toggle('cd-answered', Boolean(field.value.trim()));
+  });
+  bindForm(modal, async values => {
+    const answers = numbers.map((_, index) => values.get('cd-answer-' + index));
+    await api('assignments/' + assignment.id + '/submit', { answers });
+    dashboard = await api('dashboard');
+    navigate('/results/' + assignment.id + '/' + user.id, { replace: true });
+  });
+}
+
 function viewResult(assignmentId, studentId) {
   const a = dashboard.assignments.find(item => item.id === assignmentId);
   const row = dashboard.submissions.find(item => item.assignment === assignmentId && item.student === studentId);
@@ -590,7 +721,11 @@ function viewResult(assignmentId, studentId) {
   if (!a || !row) return openModal('Result not found', '');
   const route = 'submissions/' + assignmentId + '/' + studentId;
   const breakdown = row.criteria ? JSON.parse(row.criteria) : [];
-  const answer = a.questions ? '<ol>' + JSON.parse(row.response).map(value => '<li>' + esc(value || '—') + '</li>').join('') + '</ol>'
+  const answer = a.questions ? '<div class="cd-review"><table><caption>Answers</caption><thead><tr><th scope="col">Question</th>' +
+    '<th scope="col">Submitted answer</th><th scope="col">Answer key</th><th scope="col">Result</th></tr></thead><tbody>' +
+    (row.checks || []).map(check => '<tr><th scope="row">' + check.number + '</th><td>' + esc(check.answer || '—') +
+      '</td><td>' + esc(check.key) + '</td><td><span class="pill ' + (check.correct ? '' : 'pending') + '">' +
+      (check.correct ? 'Correct' : 'Incorrect') + '</span></td></tr>').join('') + '</tbody></table></div>'
     : row.hasAudio ? '<div class="media"><audio controls preload="none" src="/api/' + route + '/audio"></audio></div>'
     : '<div class="prompt">' + esc(row.response) + '</div>';
   const input = (label, name, value) => '<label>' + label + '<input type="number" min="0" max="9" step="0.5" required name="' + name + '" value="' + esc(value) + '"></label>';
@@ -599,7 +734,7 @@ function viewResult(assignmentId, studentId) {
     '<label>Feedback<textarea name="feedback" maxlength="10000">' + esc(row.feedback) + '</textarea></label>' + submitButton('Save score') + '</form>' :
     (breakdown.length ? '<ul>' + criteria.map((label, i) => '<li>' + label + ' · ' + breakdown[i] + '</li>').join('') + '</ul>' : '') +
     (row.feedback ? '<div class="prompt">' + esc(row.feedback) + '</div>' : '');
-  openModal(a.title, '<p class="subhead">' + esc(student?.name || a.kind) + '</p><div class="notice">' + esc(score(row, a)) + '</div>' + answer + review);
+  openModal(a.title, '<p class="subhead">' + esc(student?.name || a.kind) + '</p><div class="notice">' + esc(score(row, a)) + (a.questions && row.band !== null ? ' · ' + row.raw + ' / ' + a.questions : '') + '</div>' + answer + review);
   if (teacher() && !a.questions) bindForm(modal, async values => {
     const payload = { feedback: values.get('feedback') };
     if (a.kind === 'Writing') payload.criteria = criteria.map((_, i) => Number(values.get('c' + i)));
@@ -649,6 +784,7 @@ async function handleAction(event) {
     if (key === 'close') modal.close();
     if (key === 'register') register();
     if (key === 'admin-create') editAssignment();
+    if (key === 'admin-import-reading') importCdReading();
     if (key === 'admin-password') changeAdminPassword();
     if (key === 'admin-logout') {
       await api('admin/logout', {});
