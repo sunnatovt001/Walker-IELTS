@@ -138,7 +138,7 @@ function landing() {
     ['Speaking', 'Record your response and upload it for your teacher to review.', 'Return to Results to see your score and feedback.']
   ];
   document.title = 'Walker IELTS | Practice and progress';
-  app.innerHTML = '<div class="landing"><picture class="landing-desk"><source media="(max-width:680px)" srcset="/landing-desk-mobile.webp"><img src="/landing-desk.webp" width="1200" height="900" alt="" fetchpriority="high"></picture><header class="landing-header"><div class="landing-width landing-bar">' +
+  app.innerHTML = '<div class="landing"><picture class="landing-desk"><source media="(max-width:680px)" srcset="/landing-desk-mobile.webp"><img src="/landing-desk.webp" width="1448" height="1086" alt="" fetchpriority="high"></picture><header class="landing-header"><div class="landing-width landing-bar">' +
     '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brand + '</a>' +
     '<nav aria-label="Main navigation"><a href="#skills" class="landing-nav-link">Explore skills</a>' +
     link(entry, user ? 'Dashboard' : 'Sign in', 'accent', 'arrow') + '</nav></div></header>' +
