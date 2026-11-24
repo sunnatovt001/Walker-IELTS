@@ -13,7 +13,7 @@ h1,h2,h3{font-family:Manrope,system-ui,sans-serif}
 svg{display:block;flex-shrink:0}
 .shell{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}
 .sidebar{background:#081e38;color:#a7b9cd;padding:27px 17px 18px;display:flex;flex-direction:column;min-height:100vh;position:sticky;top:0;height:100vh}
-.brand{display:block;width:min(178px,100%);height:auto;padding:4px;background:#fff;border-radius:9px}
+.brand{display:block;width:min(178px,100%);height:auto}
 .label{font-size:10px;letter-spacing:1.55px;font-weight:800;margin:39px 12px 12px;color:#a7b9cd}
 .nav{display:grid;gap:5px}
 .nav a,.logout{display:flex;align-items:center;gap:12px;border:0;background:transparent;color:#d4dfec;text-align:left;padding:12px;border-radius:9px;font-size:14px;font-weight:600;width:100%}
