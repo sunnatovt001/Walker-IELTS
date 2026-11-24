@@ -183,7 +183,8 @@ function animateNotebook(notebook) {
     const top = notebook.getBoundingClientRect().top + scroll;
     const end = document.documentElement.scrollHeight - innerHeight;
     const stages = notes.length - 1;
-    const start = Math.max(0, Math.min(top - 80, end - 180));
+    const firstNoteCenter = top + offsets[0] + notes[0].offsetHeight / 2;
+    const start = Math.max(0, firstNoteCenter - innerHeight / 2);
     const step = Math.max(1, Math.min(210, innerHeight * .25, (end - start) / stages));
 
     let position = offsets[0];
