@@ -100,8 +100,8 @@ input[type=file]{max-width:100%}
 .login-box{width:min(100%,390px);display:grid;gap:15px}
 .login-box h2{font-size:30px;letter-spacing:-1px}
 .login-providers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.login-providers .btn{min-height:44px;text-align:center}
-.login-providers button:disabled{opacity:.63;cursor:default;filter:none}
+.login-providers .btn{min-height:48px;gap:9px;text-align:left;padding-inline:10px}
+.login-providers button:disabled{background:#fafdff;color:#54647a;cursor:default;filter:none}
 .login-divider{display:flex;gap:10px;align-items:center;color:var(--muted);font-size:12px}
 .login-divider::before,.login-divider::after{content:"";background:var(--line);height:1px;flex:1}
 .login-box .error:empty{display:none}

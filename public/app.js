@@ -221,13 +221,23 @@ function animateLanding(landingPage) {
 }
 
 const providerNames = { google: 'Google', telegram: 'Telegram' };
+const providerIcons = {
+  google: '<svg aria-hidden="true" viewBox="0 0 48 48" width="21" height="21">' +
+    '<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>' +
+    '<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.19 5.48-4.73 7.18l7.73 6C44.45 38.04 46.98 31.91 46.98 24.55z"/>' +
+    '<path fill="#FBBC05" d="M10.54 28.59a14.41 14.41 0 0 1 0-9.18l-7.98-6.19a24 24 0 0 0 0 21.56l7.98-6.19z"/>' +
+    '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.94-5.8l-7.73-6c-2.15 1.45-4.94 2.3-8.21 2.3-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
+  telegram: '<svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22">' +
+    '<circle cx="12" cy="12" r="12" fill="#229ED9"/>' +
+    '<path fill="#fff" d="M5.31 11.75c3.5-1.52 5.84-2.52 7.01-3 3.34-1.39 4.03-1.63 4.49-1.64.1 0 .33.02.48.15.13.11.16.25.17.36.02.1.04.32.02.49-.18 1.9-.95 6.52-1.34 8.65-.17.9-.5 1.2-.82 1.24-.7.06-1.23-.46-1.91-.9-1.07-.7-1.67-1.14-2.71-1.82-1.2-.79-.42-1.22.26-1.92.18-.18 3.28-3 3.34-3.25.01-.03.01-.16-.06-.22s-.18-.04-.26-.02c-.11.02-1.81 1.15-5.11 3.38-.48.33-.92.49-1.31.48-.43-.01-1.27-.24-1.89-.44-.76-.25-1.37-.38-1.32-.8.03-.22.33-.45.96-.69z"/></svg>'
+};
 let providers = [];
 let oauthLink;
 
 function providerOptions() {
   const next = new URLSearchParams(location.search).get('next') || '/dashboard';
   return '<div class="login-providers" aria-label="Other sign-in methods">' + Object.entries(providerNames).map(([provider, name]) => {
-    const text = 'Continue with ' + name;
+    const text = providerIcons[provider] + '<span>Continue with ' + name + '</span>';
     if (!providers.includes(provider)) return '<button class="btn light" type="button" disabled>' + text + '</button>';
     return '<a class="btn light" href="/api/oauth/' + provider + '/start?next=' + encodeURIComponent(next) + '">' + text + '</a>';
   }).join('') + '</div>' +
