@@ -248,3 +248,12 @@ input[type=file]{max-width:100%}
 .cd-progress{font-size:13px;color:var(--muted);font-weight:700}
 .cd-submit .error:empty{display:none}
 @media(max-width:700px){.cd-tools,.cd-utility{gap:6px}.cd-utility .btn{padding:7px 8px}.cd-questions{max-height:48vh}}
+
+div.cd-test{display:grid}
+.cd-score{display:flex;align-items:baseline;gap:8px 14px;flex-wrap:wrap;margin:0}
+.cd-score .help{flex-basis:100%}
+.cd-answer-review{background:#edf3fa;border-radius:8px;padding:8px 10px}
+.cd-answer-review dl{margin:6px 0 0;display:grid;gap:5px;font-size:13px}
+.cd-answer-review dl div{display:grid;grid-template-columns:minmax(90px,.55fr) 1fr;gap:8px}
+.cd-answer-review dt{color:var(--muted)}
+.cd-answer-review dd{margin:0;font-weight:700;overflow-wrap:anywhere}
