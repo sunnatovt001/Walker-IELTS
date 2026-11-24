@@ -56,7 +56,8 @@ function navigate(path, { replace = false, detail = false } = {}) {
 function showRoute() {
   const route = readRoute();
   if (modal.open) modal.close();
-  notebookObserver?.disconnect();
+  stopNotebookScroll?.();
+  stopNotebookScroll = undefined;
   if (route.page === 'landing') {
     landing();
     return;
@@ -79,7 +80,7 @@ function showRoute() {
   render(route);
 }
 let dashboard;
-let notebookObserver;
+let stopNotebookScroll;
 let maxUpload = 10 * 1024 * 1024;
 
 async function api(path, values) {
@@ -161,24 +162,58 @@ function landing() {
     '</div></section></main><footer class="landing-footer"><div class="landing-width landing-bar">' +
     '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brand + '</a>' +
     link(entry, user ? 'Dashboard' : 'Sign in', 'accent', 'arrow') + '</div></footer></div>';
-  if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    notebookObserver = new IntersectionObserver((entries, observer) => {
-      let delay = 0;
-      for (const { target, isIntersecting } of entries) {
-        if (!isIntersecting) continue;
-        target.style.setProperty('--note-delay', delay + 'ms');
-        target.classList.replace('note-waiting', 'note-open');
-        observer.unobserve(target);
-        delay += 95;
-      }
-    }, { threshold: 0.25, rootMargin: '0px 0px -12% 0px' });
+  stopNotebookScroll = animateNotebook(app.querySelector('.landing-notebook'));
+}
 
-    for (const note of app.querySelectorAll('.landing-note')) {
-      note.classList.add('note-waiting');
-      notebookObserver.observe(note);
+function animateNotebook(notebook) {
+  const notes = [...notebook.children];
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  const edge = 10;
+  let frame = 0;
+
+  function renderStack() {
+    frame = 0;
+    if (motion.matches) {
+      notebook.classList.remove('notebook-stacked');
+      return;
+    }
+    notebook.classList.add('notebook-stacked');
+    const offsets = notes.map(note => note.offsetTop);
+    const scroll = window.scrollY;
+    const top = notebook.getBoundingClientRect().top + scroll;
+    const end = document.documentElement.scrollHeight - innerHeight;
+    const stages = notes.length - 1;
+    const start = Math.max(0, Math.min(top - 80, end - 180));
+    const step = Math.max(1, Math.min(210, innerHeight * .25, (end - start) / stages));
+
+    let position = offsets[0];
+    for (let index = 0; index < notes.length; index++) {
+      const progress = index === 0 ? 1 : Math.min(1, Math.max(0, (scroll - start) / step - (index - 1)));
+      if (index > 0) {
+        const distance = offsets[index] - offsets[index - 1];
+        const eased = progress * progress * (3 - 2 * progress);
+        position += edge + (distance - edge) * eased;
+      }
+      notes[index].style.setProperty('--note-offset', (position - offsets[index]) + 'px');
+      notes[index].style.setProperty('--note-open', progress);
     }
   }
 
+  function schedule() {
+    if (!frame) frame = requestAnimationFrame(renderStack);
+  }
+
+  renderStack();
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule);
+  motion.addEventListener('change', schedule);
+
+  return () => {
+    cancelAnimationFrame(frame);
+    window.removeEventListener('scroll', schedule);
+    window.removeEventListener('resize', schedule);
+    motion.removeEventListener('change', schedule);
+  };
 }
 
 function login(email = '', message = '') {

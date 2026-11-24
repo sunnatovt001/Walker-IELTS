@@ -146,7 +146,7 @@ input[type=file]{max-width:100%}
 .landing-preview-row .pill.pending{background:#f6cdd0;color:#8e0925}
 .landing-skills{padding-block:32px 94px;scroll-margin-top:24px}
 .landing-skills h2{font-size:clamp(32px,4.8vw,67px);line-height:1.1;letter-spacing:-.055em;margin-bottom:46px}
-.landing-notebook{display:grid;gap:42px;width:min(91%,1140px);margin-inline:auto;perspective:1200px}
+.landing-notebook{position:relative;display:grid;grid-auto-rows:1fr;gap:42px;width:min(91%,1140px);margin-inline:auto;perspective:1200px}
 .landing-note{--note-angle:-1.4deg;display:grid;grid-template-columns:auto minmax(0,1fr);gap:clamp(14px,3vw,36px);align-items:center;min-height:clamp(180px,17.2vw,254px);padding:32px 7% 32px 13%;transform-origin:left center;rotate:var(--note-angle);border-radius:22px;filter:drop-shadow(0 8px 8px #0006)}
 .landing-note:nth-child(even){--note-angle:1.3deg}
 .landing-note .tile-icon{width:clamp(47px,7vw,100px);height:clamp(47px,7vw,100px);border-radius:20%;background:#f1dfc9;color:#132a45}
@@ -154,10 +154,12 @@ input[type=file]{max-width:100%}
 .landing-note .writing{color:#aa1432}
 .landing-note h3{font-size:clamp(26px,3.8vw,51px);line-height:1.05;letter-spacing:-.04em;color:#a30f2b;margin-bottom:8px}
 .landing-note p{color:#182f49;font-size:clamp(15px,1.7vw,24px);line-height:1.37;max-width:46ch}
-.landing-note.note-waiting{opacity:.12;transform:rotateY(22deg) translateY(32px)}
-.landing-note.note-open{animation:note-open 720ms cubic-bezier(.19,.75,.25,1) var(--note-delay,0ms) both}
-@keyframes note-open{from{opacity:.12;transform:rotateY(22deg) translateY(32px)}to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){.landing-note.note-waiting,.landing-note.note-open{animation:none;opacity:1;transform:none}}
+.notebook-stacked .landing-note{translate:0 var(--note-offset,0px);rotate:calc(var(--note-angle) * var(--note-open,1))}
+.notebook-stacked .landing-note:nth-child(1){z-index:4}
+.notebook-stacked .landing-note:nth-child(2){z-index:3}
+.notebook-stacked .landing-note:nth-child(3){z-index:2}
+.notebook-stacked .landing-note:nth-child(4){z-index:1}
+@media(prefers-reduced-motion:reduce){.notebook-stacked .landing-note{translate:none;rotate:var(--note-angle)}}
 @media(max-width:880px){.landing-width{width:calc(100% - 44px)}.landing-hero-grid{gap:22px}.landing-preview{padding-inline:2%}}
 @media(max-width:680px){
   .landing-bar{min-height:66px}.landing-nav-link{display:none}.landing-brand .brand{width:124px}
