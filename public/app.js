@@ -21,7 +21,7 @@ const paths = {
 };
 const icon = (name, size = 19) => '<svg aria-hidden="true" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + paths[name] + '</svg>';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const brand = '<img class="brand" src="/walker-logo.svg" width="568" height="255" alt="Walker IELTS">';
+const brand = '<img class="brand" src="/walker-logo.png" width="568" height="255" alt="Walker IELTS">';
 const labels = { home: 'Dashboard', tasks: 'Assignments', students: 'Students', results: 'Results' };
 let user;
 let demo;
