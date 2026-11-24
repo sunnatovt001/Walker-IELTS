@@ -21,8 +21,7 @@ const paths = {
 };
 const icon = (name, size = 19) => '<svg aria-hidden="true" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + paths[name] + '</svg>';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const brandImage = filename => '<img class="brand" src="/' + filename + '" width="568" height="255" alt="Walker IELTS">';
-const brand = brandImage('walker-logo.png');
+const brand = '<img class="brand" src="/walker-logo.png" width="568" height="255" alt="Walker IELTS">';
 const labels = { home: 'Dashboard', tasks: 'Assignments', students: 'Students', results: 'Results' };
 let user;
 let demo;
@@ -140,7 +139,7 @@ function landing() {
   ];
   document.title = 'Walker IELTS | Practice and progress';
   app.innerHTML = '<div class="landing"><img class="landing-desk" src="/landing-desk.webp" width="1200" height="900" alt="" fetchpriority="high"><header class="landing-header"><div class="landing-width landing-bar">' +
-    '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brandImage('walker-logo-light-bg.png') + '</a>' +
+    '<a href="/" class="landing-brand" aria-label="Walker IELTS home">' + brand + '</a>' +
     '<nav aria-label="Main navigation"><a href="#skills" class="landing-nav-link">Explore skills</a>' +
     link(entry, user ? 'Dashboard' : 'Sign in', 'accent', 'arrow') + '</nav></div></header>' +
     '<main><section class="landing-hero"><div class="landing-width landing-hero-grid"><div class="landing-intro">' +

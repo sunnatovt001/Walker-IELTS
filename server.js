@@ -155,7 +155,6 @@ const publicFiles = {
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/walker-logo.png': ['walker-logo.png', 'image/png'],
-  '/walker-logo-light-bg.png': ['walker-logo-light-bg.png', 'image/png'],
   '/landing-desk.webp': ['landing-desk.webp', 'image/webp'],
   '/assignment-paper.webp': ['assignment-paper.webp', 'image/webp'],
   '/notebook-paper.webp': ['notebook-paper.webp', 'image/webp']
