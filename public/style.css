@@ -92,6 +92,7 @@ input[type=file]{max-width:100%}
 .media audio{width:100%}
 .answer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .login{
+  position:relative;
   min-height:100vh;
   min-height:100svh;
   display:grid;
@@ -105,7 +106,11 @@ input[type=file]{max-width:100%}
   .login{background-size:100% 100%}
 }
 .login-aside{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;color:#fff;gap:24px}
-.login-aside .brand{width:min(100%,230px)}
+.login-aside .brand{width:172px}
+@media(min-width:701px){
+  .login-aside{justify-content:flex-end}
+  .login-aside .brand{position:absolute;top:24px;left:26px}
+}
 .login-tagline{font:800 clamp(36px,5.15vw,80px)/.99 Manrope,system-ui,sans-serif;letter-spacing:-.065em;text-shadow:0 2px 18px #081e3899}
 .login-main{display:grid;align-items:center;justify-items:end;min-width:0}
 .login-box{
@@ -153,7 +158,7 @@ input[type=file]{max-width:100%}
 @media(max-width:700px){
   .login{grid-template-columns:minmax(0,1fr);align-content:start;gap:22px;padding:20px 16px 32px;background-position:32% top}
   .login-aside{gap:16px;justify-content:flex-start}
-  .login-aside .brand{width:138px}
+  .login-aside .brand{width:125px}
   .login-tagline{font-size:clamp(27px,7vw,40px)}
   .login-main{justify-items:center}
   .login-box{padding:24px;border-radius:20px}
