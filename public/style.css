@@ -101,12 +101,12 @@ input[type=file]{max-width:100%}
 }
 .login-header{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .login-header .brand{width:clamp(118px,11vw,174px)}
+.login-home,.landing-nav-link,.landing-secondary{font-size:14px;font-weight:700}
 .login-home{
   display:inline-flex;
   align-items:center;
   gap:8px;
   color:#fff8eb;
-  font:clamp(15px,1.35vw,20px) Georgia,serif;
   text-underline-offset:4px;
 }
 .login-home svg{transform:rotate(180deg)}
@@ -201,7 +201,7 @@ input[type=file]{max-width:100%}
 .landing-brand{text-decoration:none}
 .landing-brand .brand{width:150px}
 .landing-bar nav,.landing-actions{display:flex;align-items:center;gap:24px}
-.landing-nav-link,.landing-secondary{font-weight:700;text-decoration:none;font-size:14px}
+.landing-nav-link,.landing-secondary{text-decoration:none}
 .landing-nav-link{color:#e0eaf6}
 .landing-header .btn{padding:11px 16px}
 .landing-hero-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:center;gap:clamp(24px,4vw,52px);padding-block:104px 64px;min-height:clamp(490px,65svh,660px)}
