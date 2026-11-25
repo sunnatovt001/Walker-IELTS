@@ -92,42 +92,63 @@ input[type=file]{max-width:100%}
 .media audio{width:100%}
 .answer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .login{
-  position:relative;
   min-height:100vh;
   min-height:100svh;
   display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-  gap:clamp(28px,5vw,76px);
-  padding:clamp(28px,4vw,64px) clamp(28px,7vw,112px) clamp(36px,5.5vw,86px) clamp(28px,4vw,64px);
-  background:#0a2342 url("/login-desk.webp") center/cover no-repeat;
+  grid-template-rows:auto 1fr;
+  padding:clamp(18px,3vw,46px);
+  background:#0b1c2b url("/login-desk.webp?v=2") center/cover no-repeat;
 }
-/* Keep the full desk composition on wide screens. */
-@media(min-width:701px) and (min-aspect-ratio:3/2){
-  .login{background-size:100% 100%}
+.login-header{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.login-header .brand{width:clamp(118px,11vw,174px)}
+.login-home{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:#fff8eb;
+  font:clamp(15px,1.35vw,20px) Georgia,serif;
+  text-underline-offset:4px;
 }
-.login-aside{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;color:#fff;gap:24px}
-.login-aside .brand{width:172px}
-@media(min-width:701px){
-  .login-aside{justify-content:flex-end}
-  .login-aside .brand{position:absolute;top:24px;left:26px}
-}
-.login-tagline{font:800 clamp(36px,5.15vw,80px)/.99 Manrope,system-ui,sans-serif;letter-spacing:-.065em;text-shadow:0 2px 18px #081e3899}
-.login-main{display:grid;align-items:center;justify-items:end;min-width:0}
+.login-home svg{transform:rotate(180deg)}
+.login-main{display:grid;place-items:center;min-width:0;padding:clamp(30px,5vh,54px) 0 clamp(48px,11vh,116px)}
 .login-box{
-  width:min(100%,496px);
+  position:relative;
+  isolation:isolate;
+  width:min(100%,530px);
   display:grid;
-  gap:clamp(16px,1.65vw,25px);
-  padding:clamp(28px,2.8vw,44px);
-  border:1px solid #fff8;
-  border-radius:26px;
-  background:#fbf5ee;
-  box-shadow:0 18px 48px #08182959;
+  gap:clamp(18px,2vw,30px);
+  padding:clamp(26px,4vw,60px);
+  color:#122638;
+  font-family:Georgia,serif;
 }
-.login-box h1{font-size:clamp(32px,2.8vw,42px);line-height:1.12;letter-spacing:-.05em}
-.login-box form{gap:clamp(14px,1.2vw,18px)}
-.login-box label{font-size:clamp(14px,1.1vw,17px)}
-.login-box input{min-height:clamp(44px,3.15vw,48px);background:#fff}
-.login-box button[type=submit]{min-height:clamp(44px,3.15vw,48px);font-size:clamp(16px,1.2vw,18px)}
+.login-box::before,.login-box::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:18px;
+  background:#f7eddf url("/assignment-paper.webp") center/cover;
+  pointer-events:none;
+}
+.login-box::before{
+  z-index:-2;
+  transform:translate(8px,4px) rotate(-1.5deg);
+  box-shadow:0 16px 40px #0007;
+}
+.login-box::after{z-index:-1;box-shadow:0 7px 17px #0004}
+.login-box h1{font:700 clamp(34px,3.45vw,53px)/1.05 Georgia,serif;letter-spacing:-.035em}
+.login-box form{gap:clamp(14px,1.45vw,22px)}
+.login-box label{font-size:clamp(16px,1.35vw,20px)}
+.login-box input{
+  min-height:clamp(44px,3.25vw,50px);
+  border-color:#9e9385;
+  background:#fffbf536;
+  font:16px "DM Sans",system-ui,sans-serif;
+}
+.login-box button[type=submit]{
+  min-height:clamp(44px,3.35vw,52px);
+  background:#a50e26;
+  font-size:clamp(17px,1.45vw,23px);
+}
 .login-providers{display:flex;justify-content:center;gap:clamp(18px,2vw,30px)}
 .login-provider{
   display:grid;
@@ -145,7 +166,7 @@ input[type=file]{max-width:100%}
 .login-provider[href]:hover{box-shadow:0 0 0 4px #132a451a}
 .login-provider:disabled{cursor:default}
 .login-provider-status{margin-top:-12px;text-align:center}
-.login-invite,.login-box > a{
+.login-invite{
   justify-self:center;
   font-size:clamp(14px,1.1vw,17px);
   color:var(--ink);
@@ -156,12 +177,9 @@ input[type=file]{max-width:100%}
 .login-invite{border:0;background:transparent;padding:0}
 .login-box .error:empty{display:none}
 @media(max-width:700px){
-  .login{grid-template-columns:minmax(0,1fr);align-content:start;gap:22px;padding:20px 16px 32px;background-position:32% top}
-  .login-aside{gap:16px;justify-content:flex-start}
-  .login-aside .brand{width:125px}
-  .login-tagline{font-size:clamp(27px,7vw,40px)}
-  .login-main{justify-items:center}
-  .login-box{padding:24px;border-radius:20px}
+  .login{padding:18px 20px;background-position:48% center}
+  .login-main{padding:36px 0 52px}
+  .login-box::before{transform:translate(5px,4px) rotate(-1deg)}
 }
 .demo-buttons{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:960px){.shell{grid-template-columns:190px minmax(0,1fr)}.top,.content{padding-left:22px;padding-right:22px}.hero-art{opacity:.6}}

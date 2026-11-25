@@ -257,18 +257,17 @@ function login(email = '', message = '') {
   const formTitle = connecting ? 'Link your ' + providerNames[oauthLink] + ' account' : 'Sign in';
   const statusMessage = status === 'failed' ? 'Provider sign-in could not be completed. Try again or sign in with your email.'
     : status === 'link' && !connecting ? 'This connection has expired. Start again with your sign-in provider.' : '';
-  app.innerHTML = '<main class="login"><section class="login-aside">' + brand +
-    '<div><p class="login-tagline">IELTS practice<br>in one place.</p></div></section>' +
+  app.innerHTML = '<main class="login"><header class="login-header">' + brand +
+    '<a href="/" data-route class="login-home">' + icon('arrow', 16) + ' Back to home</a></header>' +
     '<section class="login-main"><div class="login-box"><h1>' + formTitle + '</h1>' +
     (statusMessage ? '<p class="error" role="status">' + statusMessage + '</p>' : '') +
     (connecting ? '<p class="help">Sign in with your Walker IELTS email and password once to link your account.</p>' : '') + '<form>' +
     (message ? '<p class="help notice" role="status">' + esc(message) + '</p>' : '') +
     '<label>Email<input required type="email" name="email" autocomplete="username" value="' + esc(email) + '"></label>' +
     '<label>Password<input required type="password" name="password" autocomplete="current-password"></label>' +
-    errorLine + '<button type="submit" class="btn accent">' + (connecting ? 'Link account and sign in' : 'Sign in') + ' ' + icon('arrow', 16) + '</button></form>' +
+    errorLine + '<button type="submit" class="btn accent">' + (connecting ? 'Link account and sign in' : 'Sign in') + '</button></form>' +
     (connecting ? '' : providerOptions()) +
     '<button class="login-invite" type="button" data-action="register">Create an account with an invite code</button>' +
-    '<a href="/" data-route>Back to home</a>' +
     (demo ? '<div class="demo-buttons">' + action('demo-teacher', 'Teacher demo') + action('demo-student', 'Student demo') + '</div>' : '') +
     '</div></section></main>';
   bindForm(app, values => signIn({ ...Object.fromEntries(values), connectProvider: connecting }));
