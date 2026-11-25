@@ -105,25 +105,25 @@ input[type=file]{max-width:100%}
 .login-tagline{font:800 clamp(36px,5.15vw,80px)/.99 Manrope,system-ui,sans-serif;letter-spacing:-.065em;text-shadow:0 2px 18px #081e3899}
 .login-main{display:grid;align-items:center;justify-items:end;min-width:0}
 .login-box{
-  width:min(100%,552px);
+  width:min(100%,496px);
   display:grid;
-  gap:clamp(16px,2.25vw,34px);
-  padding:clamp(28px,3.55vw,56px);
+  gap:clamp(16px,1.65vw,25px);
+  padding:clamp(28px,2.8vw,44px);
   border:1px solid #fff8;
   border-radius:26px;
   background:#fbf5ee;
   box-shadow:0 18px 48px #08182959;
 }
-.login-box h1{font-size:clamp(32px,3.3vw,50px);line-height:1.12;letter-spacing:-.05em}
-.login-box form{gap:clamp(14px,1.55vw,24px)}
-.login-box label{font-size:clamp(14px,1.3vw,20px)}
-.login-box input{min-height:clamp(44px,3.65vw,56px);background:#fff}
-.login-box button[type=submit]{min-height:clamp(44px,3.65vw,56px);font-size:clamp(16px,1.45vw,22px)}
-.login-providers{display:flex;justify-content:center;gap:clamp(18px,2.5vw,38px)}
+.login-box h1{font-size:clamp(32px,2.8vw,42px);line-height:1.12;letter-spacing:-.05em}
+.login-box form{gap:clamp(14px,1.2vw,18px)}
+.login-box label{font-size:clamp(14px,1.1vw,17px)}
+.login-box input{min-height:clamp(44px,3.15vw,48px);background:#fff}
+.login-box button[type=submit]{min-height:clamp(44px,3.15vw,48px);font-size:clamp(16px,1.2vw,18px)}
+.login-providers{display:flex;justify-content:center;gap:clamp(18px,2vw,30px)}
 .login-provider{
   display:grid;
   place-items:center;
-  width:clamp(48px,4.25vw,64px);
+  width:clamp(48px,3.55vw,54px);
   aspect-ratio:1;
   padding:0;
   border:1px solid #c5d1df;
@@ -138,7 +138,7 @@ input[type=file]{max-width:100%}
 .login-provider-status{margin-top:-12px;text-align:center}
 .login-invite,.login-box > a{
   justify-self:center;
-  font-size:clamp(14px,1.3vw,20px);
+  font-size:clamp(14px,1.1vw,17px);
   color:var(--ink);
   text-align:center;
   text-decoration:underline;
