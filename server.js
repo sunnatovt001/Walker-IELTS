@@ -66,6 +66,11 @@ const schema = `
     title TEXT NOT NULL, prompt TEXT NOT NULL, due TEXT, level TEXT NOT NULL,
     keys TEXT NOT NULL, pdf BLOB, audio BLOB, audio_type TEXT
   );
+  CREATE TABLE IF NOT EXISTS reading_attempts (
+    assignment INTEGER NOT NULL REFERENCES assignments(id), student INTEGER NOT NULL REFERENCES users(id),
+    deadline INTEGER, remaining INTEGER NOT NULL, answers TEXT NOT NULL,
+    PRIMARY KEY(assignment, student)
+  );
   CREATE TABLE IF NOT EXISTS submissions (
     assignment INTEGER REFERENCES assignments(id), student INTEGER REFERENCES users(id),
     response TEXT NOT NULL, audio BLOB, audio_type TEXT, raw INTEGER, band REAL,
@@ -367,6 +372,43 @@ function answerReview(submission, assignment) {
   return { ...submission, checks };
 }
 
+const readingDuration = 60 * 60 * 1000;
+
+function validateAnswers(answers, count) {
+  if (!Array.isArray(answers) || answers.length !== count ||
+      answers.some(value => typeof value !== 'string' || value.length > 500)) {
+    fail(400, 'Check the number and length of your answers.');
+  }
+}
+
+async function readingTimer(user, assignment, form) {
+  if (user.teacher === null || assignment.kind !== 'Reading' || !readCdPrompt(assignment.prompt)) fail(403, 'This test has no student timer.');
+  const id = assignment.id;
+  const student = user.id;
+  const now = Date.now();
+  const count = JSON.parse(assignment.keys).length;
+  if (await get('SELECT 1 FROM submissions WHERE assignment=? AND student=?', id, student)) fail(409, 'This assignment is already submitted.');
+  if (form.action === 'start') {
+    await run('INSERT OR IGNORE INTO reading_attempts VALUES (?,?,?,?,?)', id, student, now + readingDuration, readingDuration,
+      JSON.stringify(Array(count).fill('')));
+  } else if (form.action === 'resume') {
+    await run('UPDATE reading_attempts SET deadline=?+remaining WHERE assignment=? AND student=? AND deadline IS NULL AND remaining>0', now, id, student);
+  } else if (form.action === 'save' || form.action === 'pause') {
+    validateAnswers(form.answers, count);
+    const answers = JSON.stringify(form.answers);
+    if (form.action === 'pause') {
+      await run('UPDATE reading_attempts SET remaining=deadline-?,deadline=NULL,answers=? WHERE assignment=? AND student=? AND deadline>?',
+        now, answers, id, student, now);
+    } else {
+      await run('UPDATE reading_attempts SET answers=? WHERE assignment=? AND student=? AND deadline>?', answers, id, student, now);
+    }
+  } else fail(400, 'Unknown timer action.');
+  const attempt = await get('SELECT * FROM reading_attempts WHERE assignment=? AND student=?', id, student);
+  if (!attempt) fail(409, 'Open the test to start the timer.');
+  return { paused: attempt.deadline === null, remaining: Math.max(0, attempt.deadline === null ? attempt.remaining : attempt.deadline - Date.now()),
+    answers: JSON.parse(attempt.answers) };
+}
+
 async function handleAdmin(req, res, path) {
   const password = process.env.WALKER_ADMIN_PASSWORD;
   let account = await get('SELECT username,password FROM admin_account WHERE id=1');
@@ -460,9 +502,10 @@ async function handleAdmin(req, res, path) {
     }
     const results = await db.batch([
       { sql: 'DELETE FROM submissions WHERE assignment IN (SELECT id FROM assignments WHERE id=? AND teacher=?)', args: [id, owner.id] },
+      { sql: 'DELETE FROM reading_attempts WHERE assignment IN (SELECT id FROM assignments WHERE id=? AND teacher=?)', args: [id, owner.id] },
       { sql: 'DELETE FROM assignments WHERE id=? AND teacher=?', args: [id, owner.id] }
     ], 'write');
-    if (!results[1].rowsAffected) fail(404, 'Assignment not found.');
+    if (!results[2].rowsAffected) fail(404, 'Assignment not found.');
     return send(res, {});
   }
   fail(404, 'Page not found.');
@@ -579,6 +622,11 @@ export async function handler(req, res) {
       if (!row[column]) fail(404, 'File not found.');
       return res.writeHead(200, { 'Content-Type': column === 'pdf' ? 'application/pdf' : row.audio_type }).end(Buffer.from(row[column]));
     }
+    const timer = /^\/api\/assignments\/(\d+)\/timer$/.exec(path);
+    if (timer && post) {
+      const form = await body(req);
+      return send(res, await readingTimer(user, await scopedAssignment(user, Number(timer[1])), form));
+    }
     const submit = /^\/api\/assignments\/(\d+)\/submit$/.exec(path);
     if (submit && post) {
       if (isTeacher) fail(403, 'Only students can submit assignments.');
@@ -590,9 +638,16 @@ export async function handler(req, res) {
       let audio = null;
       let response = '';
       if (keys.length) {
-        if (!Array.isArray(form.answers) || form.answers.length !== keys.length || form.answers.some(value => typeof value !== 'string' || value.length > 500)) fail(400, 'Check the number and length of your answers.');
-        response = JSON.stringify(form.answers);
-        raw = gradeAnswers(form.answers, keys, readCdPrompt(assignment.prompt), normalize).filter(Boolean).length;
+        const cd = readCdPrompt(assignment.prompt);
+        let answers = form.answers;
+        if (cd) {
+          const attempt = await get('SELECT deadline,answers FROM reading_attempts WHERE assignment=? AND student=?', assignment.id, user.id);
+          if (!attempt || attempt.deadline === null) fail(409, 'Resume the test before submitting.');
+          if (attempt.deadline <= Date.now()) answers = JSON.parse(attempt.answers);
+        }
+        validateAnswers(answers, keys.length);
+        response = JSON.stringify(answers);
+        raw = gradeAnswers(answers, keys, cd, normalize).filter(Boolean).length;
         if (keys.length === 40) band = benchmarks[assignment.kind === 'Listening' ? 'Listening' : assignment.level].find(([minimum]) => raw >= minimum)[1];
       } else if (assignment.kind === 'Speaking') {
         audio = file(form.audio, 'audio');

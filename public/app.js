@@ -759,7 +759,9 @@ function openCdReading(assignment, result) {
       return markup;
     }).join('') + '</div></section>').join('');
   const tag = result ? 'div' : 'form';
-  openModal(assignment.title, '<' + tag + ' class="cd-test">' + summary + '<div class="cd-tools">' +
+  const timer = result ? '' : '<div class="cd-timer"><span>Time remaining <strong data-reading-time>60:00</strong></span>' +
+    '<button type="button" class="btn light" data-reading-pause disabled>Pause</button><span class="help" data-reading-status role="status"></span></div>';
+  openModal(assignment.title, '<' + tag + ' class="cd-test">' + summary + timer + '<div class="cd-tools">' +
     '<a class="cd-telegram" href="https://t.me/walker_ielts" target="_blank" rel="noopener">' + providerIcons.telegram + 'Walker IELTS on Telegram</a>' +
     '<div class="cd-utility"><label>Text size<select name="text-size"><option value="standard">Standard</option><option value="large">Large</option></select></label>' +
     '<button type="button" class="btn light" data-highlight>Highlight selection</button><button type="button" class="btn light" data-clear-highlight>Clear highlights</button></div></div>' +
@@ -794,16 +796,137 @@ function openCdReading(assignment, result) {
     copy.querySelectorAll('mark').forEach(mark => mark.replaceWith(...mark.childNodes));
     copy.normalize();
   };
-  if (result) return;
-  const readAnswers = values => Array.from({ length: answerCount }, (_, index) => values.get('cd-answer-' + index) || '');
-  form.addEventListener('input', () => {
-    const count = readAnswers(new FormData(form)).filter(answer => answer.trim()).length;
-    form.querySelector('.cd-progress').textContent = count + ' / ' + answerCount + ' answered';
-  });
-  bindForm(modal, async values => {
-    await api('assignments/' + assignment.id + '/submit', { answers: readAnswers(values) });
+  if (!result) startReadingTimer(form, assignment, answerCount);
+}
+
+function startReadingTimer(form, assignment, answerCount) {
+  const endpoint = 'assignments/' + assignment.id;
+  const pause = form.querySelector('[data-reading-pause]');
+  const clock = form.querySelector('[data-reading-time]');
+  const status = form.querySelector('[data-reading-status]');
+  const progress = form.querySelector('.cd-progress');
+  const submit = form.querySelector('[type=submit]');
+  const protectedAreas = form.querySelectorAll('.cd-tools,.cd-tabs,.cd-part');
+  let state;
+  let deadline;
+  let busy = true;
+  let expiredSubmissionStarted = false;
+  let saveQueue = Promise.resolve();
+  const active = () => form.isConnected && modal.open;
+  const answers = () => {
+    const data = new FormData(form);
+    return Array.from({ length: answerCount }, (_, index) => data.get('cd-answer-' + index) || '');
+  };
+  const updateProgress = () => {
+    progress.textContent = answers().filter(answer => answer.trim()).length + ' / ' + answerCount + ' answered';
+  };
+
+  async function finish() {
+    await api(endpoint + '/submit', { answers: answers() });
     dashboard = await api('dashboard');
-    navigate('/results/' + assignment.id + '/' + user.id, { replace: true });
+    if (active()) navigate('/results/' + assignment.id + '/' + user.id, { replace: true });
+  }
+
+  function draw() {
+    const remaining = state ? (state.paused ? state.remaining : Math.max(0, deadline - performance.now())) : 3600000;
+    const seconds = Math.ceil(remaining / 1000);
+    clock.textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+    form.classList.toggle('cd-timer-paused', Boolean(state?.paused));
+    for (const area of protectedAreas) area.inert = busy || state?.paused || remaining === 0;
+    pause.textContent = state?.paused ? 'Resume' : 'Pause';
+    pause.disabled = busy || !state || remaining === 0;
+    submit.disabled = busy || !state || Boolean(state?.paused);
+    const message = state?.paused ? 'Test paused. Resume to continue.' : remaining === 0 ? 'Time is up.' : '';
+    if (status.textContent !== message) status.textContent = message;
+    submit.textContent = remaining === 0 ? 'Submit saved answers' : 'Submit assignment';
+    if (remaining === 0 && !busy && !expiredSubmissionStarted) {
+      expiredSubmissionStarted = true;
+      busy = true;
+      submit.disabled = true;
+      saveQueue.then(finish).catch(error => {
+        busy = false;
+        if (active()) {
+          showError(error, modal);
+          draw();
+        }
+      });
+    }
+  }
+
+  function useState(next) {
+    state = next;
+    deadline = performance.now() + next.remaining;
+  }
+
+  const interval = setInterval(() => {
+    if (active()) draw();
+    else clearInterval(interval);
+  }, 250);
+  draw();
+  api(endpoint + '/timer', { action: 'start' }).then(next => {
+    if (!active()) return;
+    useState(next);
+    next.answers.slice(0, answerCount).forEach((value, index) => {
+      const fields = [...form.querySelectorAll('[name=cd-answer-' + index + ']')];
+      for (const field of fields) {
+        if (field.type === 'radio') field.checked = field.value === value;
+        else field.value = value;
+      }
+    });
+    busy = false;
+    updateProgress();
+    draw();
+  }).catch(error => {
+    if (active()) showError(error, modal);
+  });
+
+  let saving = false;
+  let queuedAnswers;
+  form.addEventListener('input', event => {
+    if (!event.target.name.startsWith('cd-answer-') || busy || state?.paused) return;
+    updateProgress();
+    queuedAnswers = answers();
+    if (saving) return;
+    saving = true;
+    saveQueue = (async () => {
+      while (queuedAnswers) {
+        const snapshot = queuedAnswers;
+        queuedAnswers = null;
+        try {
+          await api(endpoint + '/timer', { action: 'save', answers: snapshot });
+        } catch (error) {
+          if (active()) showError(error, modal);
+        }
+      }
+      saving = false;
+    })();
+  });
+  pause.onclick = async () => {
+    if (busy || !state) return;
+    const next = state.paused ? { action: 'resume' } : { action: 'pause', answers: answers() };
+    busy = true;
+    draw();
+    try {
+      await saveQueue;
+      useState(await api(endpoint + '/timer', next));
+    } catch (error) {
+      if (active()) showError(error, modal);
+    } finally {
+      busy = false;
+      if (active()) draw();
+    }
+  };
+  bindForm(modal, async () => {
+    if (busy || !state || state.paused) return;
+    busy = true;
+    draw();
+    try {
+      await saveQueue;
+      await finish();
+    } finally {
+      busy = false;
+      if (active()) draw();
+    }
   });
 }
 

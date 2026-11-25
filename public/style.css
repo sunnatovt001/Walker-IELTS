@@ -257,3 +257,8 @@ div.cd-test{display:grid}
 .cd-answer-review dl div{display:grid;grid-template-columns:minmax(90px,.55fr) 1fr;gap:8px}
 .cd-answer-review dt{color:var(--muted)}
 .cd-answer-review dd{margin:0;font-weight:700;overflow-wrap:anywhere}
+
+.cd-timer{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;background:#e8eff9;padding:10px 12px;border-radius:9px;font-weight:700;font-size:14px}
+.cd-timer strong{font-variant-numeric:tabular-nums;margin-left:5px;font-size:17px}
+.cd-timer .help{font-weight:500}
+.cd-timer-paused .cd-part{visibility:hidden;max-height:120px;overflow:hidden}
