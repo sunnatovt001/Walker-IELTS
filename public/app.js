@@ -241,12 +241,13 @@ let oauthLink;
 
 function providerOptions() {
   const next = new URLSearchParams(location.search).get('next') || '/dashboard';
-  return '<div class="login-providers" aria-label="Other sign-in methods">' + Object.entries(providerNames).map(([provider, name]) => {
-    const text = providerIcons[provider] + '<span>Continue with ' + name + '</span>';
-    if (!providers.includes(provider)) return '<button class="btn light" type="button" disabled>' + text + '</button>';
-    return '<a class="btn light" href="/api/oauth/' + provider + '/start?next=' + encodeURIComponent(next) + '">' + text + '</a>';
+  return '<div class="login-providers" role="group" aria-label="Other sign-in methods">' + Object.entries(providerNames).map(([provider, name]) => {
+    const label = 'Continue with ' + name;
+    const attributes = ' class="login-provider ' + provider + '" aria-label="' + label + '" title="' + label + '"';
+    if (!providers.includes(provider)) return '<button' + attributes + ' type="button" disabled>' + providerIcons[provider] + '</button>';
+    return '<a' + attributes + ' href="/api/oauth/' + provider + '/start?next=' + encodeURIComponent(next) + '">' + providerIcons[provider] + '</a>';
   }).join('') + '</div>' +
-    (providers.length < 2 ? '<p class="help">Unavailable providers require configuration.</p>' : '');
+    (providers.length < 2 ? '<p class="help login-provider-status">Unavailable providers require configuration.</p>' : '');
 }
 
 function login(email = '', message = '') {
@@ -257,16 +258,16 @@ function login(email = '', message = '') {
   const statusMessage = status === 'failed' ? 'Provider sign-in could not be completed. Try again or sign in with your email.'
     : status === 'link' && !connecting ? 'This connection has expired. Start again with your sign-in provider.' : '';
   app.innerHTML = '<main class="login"><section class="login-aside">' + brand +
-    '<div><h1>IELTS practice<br>in one place.</h1><p>Assignments, submissions, and results.</p></div></section>' +
-    '<section class="login-main"><div class="login-box"><h2>' + formTitle + '</h2>' +
+    '<div><p class="login-tagline">IELTS practice<br>in one place.</p></div></section>' +
+    '<section class="login-main"><div class="login-box"><h1>' + formTitle + '</h1>' +
     (statusMessage ? '<p class="error" role="status">' + statusMessage + '</p>' : '') +
-    (connecting ? '<p class="help">Sign in with your Walker IELTS email and password once to link your account.</p>' :
-      providerOptions() + '<div class="login-divider">Or use your email</div>') + '<form>' +
+    (connecting ? '<p class="help">Sign in with your Walker IELTS email and password once to link your account.</p>' : '') + '<form>' +
     (message ? '<p class="help notice" role="status">' + esc(message) + '</p>' : '') +
     '<label>Email<input required type="email" name="email" autocomplete="username" value="' + esc(email) + '"></label>' +
     '<label>Password<input required type="password" name="password" autocomplete="current-password"></label>' +
     errorLine + '<button type="submit" class="btn accent">' + (connecting ? 'Link account and sign in' : 'Sign in') + ' ' + icon('arrow', 16) + '</button></form>' +
-    '<div>' + action('register', 'Create an account with an invite code') + '</div>' +
+    (connecting ? '' : providerOptions()) +
+    '<button class="login-invite" type="button" data-action="register">Create an account with an invite code</button>' +
     '<a href="/" data-route>Back to home</a>' +
     (demo ? '<div class="demo-buttons">' + action('demo-teacher', 'Teacher demo') + action('demo-student', 'Student demo') + '</div>' : '') +
     '</div></section></main>';
