@@ -100,6 +100,10 @@ input[type=file]{max-width:100%}
   padding:clamp(28px,4vw,64px) clamp(28px,7vw,112px) clamp(36px,5.5vw,86px) clamp(28px,4vw,64px);
   background:#0a2342 url("/login-desk.webp") center/cover no-repeat;
 }
+/* Keep the full desk composition on wide screens. */
+@media(min-width:701px) and (min-aspect-ratio:3/2){
+  .login{background-size:100% 100%}
+}
 .login-aside{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;color:#fff;gap:24px}
 .login-aside .brand{width:min(100%,230px)}
 .login-tagline{font:800 clamp(36px,5.15vw,80px)/.99 Manrope,system-ui,sans-serif;letter-spacing:-.065em;text-shadow:0 2px 18px #081e3899}
