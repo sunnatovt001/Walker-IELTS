@@ -464,7 +464,8 @@ async function showAdminAssignments(message = '') {
     action('admin-logout', 'Sign out', 'light', 'logout') + '</div></header>' +
     '<main class="admin-content"><div class="headline"><div><h1>Manage assignments</h1>' +
     '<p class="subhead">Publish and manage IELTS tests for your class.</p></div>' +
-    '<div class="admin-actions">' + action('admin-import-reading', 'Import CD Reading', 'light') +
+    '<div class="admin-actions">' + action('admin-demo-student', 'Demo student', 'light') +
+    action('admin-import-reading', 'Import CD Reading', 'light') +
     action('admin-create', 'New assignment', 'accent', 'plus') + '</div></div>' +
     (message ? '<p class="notice" role="status">' + esc(message) + '</p>' : '') + errorLine +
     '<section class="panel" aria-label="Assignments">' + (assignments.map(assignment =>
@@ -614,6 +615,24 @@ function deleteAssignment(assignment) {
     await api('admin/assignments/' + assignment.id + '/delete', {});
     modal.close();
     await showAdminAssignments('Assignment deleted.');
+  });
+}
+
+async function manageDemoStudent() {
+  const { email, exists } = await api('admin/demo-student');
+  if (readRoute().page !== 'admin') return;
+  const details = '<p>Email: <strong>' + esc(email) + '</strong></p>';
+  if (exists) {
+    openModal('Demo student ready', details + '<p class="help">Use this email and the password you chose on the regular sign-in page.</p>' +
+      '<a class="btn" href="/login" target="_blank" rel="noopener">Open sign in</a>');
+    return;
+  }
+  openModal('Create a demo student', details + '<form>' +
+    '<label>Demo password<input name="password" type="password" required minlength="12" maxlength="200" autocomplete="new-password"></label>' +
+    submitButton('Create demo student') + '</form>');
+  bindForm(modal, async values => {
+    await api('admin/demo-student', { password: values.get('password') });
+    await manageDemoStudent();
   });
 }
 
@@ -863,6 +882,7 @@ async function handleAction(event) {
     if (key === 'close') modal.close();
     if (key === 'register') register();
     if (key === 'admin-create') editAssignment();
+    if (key === 'admin-demo-student') await manageDemoStudent();
     if (key === 'admin-import-reading') importCdReading();
     if (key === 'admin-password') changeAdminPassword();
     if (key === 'admin-logout') {

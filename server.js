@@ -34,6 +34,10 @@ const schema = `
   CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY, user INTEGER REFERENCES users(id), expires INTEGER
   );
+  CREATE TABLE IF NOT EXISTS demo_students (
+    teacher INTEGER PRIMARY KEY REFERENCES users(id),
+    student INTEGER NOT NULL UNIQUE REFERENCES users(id)
+  );
   CREATE TABLE IF NOT EXISTS admin_account (
     id INTEGER PRIMARY KEY CHECK(id=1), username TEXT NOT NULL, password TEXT NOT NULL
   );
@@ -415,6 +419,26 @@ async function handleAdmin(req, res, path) {
     ? await get('SELECT id FROM users WHERE email=? AND teacher IS NULL', teacherEmail)
     : await get('SELECT id FROM users WHERE teacher IS NULL ORDER BY id LIMIT 1');
   if (!owner) fail(503, 'The teacher workspace is unavailable.');
+  if (path === '/api/admin/demo-student' && ['GET', 'POST'].includes(req.method)) {
+    const email = 'demo.student@walker.test';
+    const existing = await get('SELECT u.email FROM demo_students d JOIN users u ON u.id=d.student WHERE d.teacher=?', owner.id);
+    if (req.method === 'GET') return send(res, { email: existing?.email || email, exists: Boolean(existing) });
+    if (existing) return send(res, { email: existing.email, exists: true });
+    const { password } = await body(req);
+    if (!validPassword(password)) fail(400, 'Choose a password with 12–200 characters.');
+    const result = await db.batch([
+      { sql: 'INSERT OR IGNORE INTO users(name,email,password,teacher) VALUES (?,?,?,?)',
+        args: ['Demo Student', email, passwordHash(password), owner.id] },
+      { sql: 'INSERT INTO demo_students (teacher,student) SELECT ?,id FROM users WHERE email=? AND changes()=1',
+        args: [owner.id, email] }
+    ], 'write');
+    if (!result[1].rowsAffected) {
+      const created = await get('SELECT student FROM demo_students WHERE teacher=?', owner.id);
+      if (!created) fail(409, 'The demo email is already in use.');
+      return send(res, { email, exists: true });
+    }
+    return send(res, { email, exists: true }, 201);
+  }
   if (path === '/api/admin/assignments') {
     if (req.method === 'GET') {
       const assignments = await all('SELECT ' + assignmentColumns +
