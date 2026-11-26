@@ -297,6 +297,7 @@ function register() {
     '<label>Invite code<input name="code" required autocomplete="off" spellcheck="false"></label>' +
     '<label>New password<input name="password" type="password" required minlength="12" maxlength="200" autocomplete="new-password"></label>' +
     submitButton('Create account') + '</form>');
+  modal.classList.add('invite-dialog');
   const emailInput = app.querySelector('[name=email]');
   if (emailInput) modal.querySelector('[name=email]').value = emailInput.value;
   bindForm(modal, async values => {
@@ -396,10 +397,14 @@ function teacherTable(caption, headers, rows) {
     '</tbody></table></div>';
 }
 
+function teacherCell(label, contents) {
+  return '<td role="cell"><span class="teacher-cell-label" aria-hidden="true">' + label + '</span>' + contents + '</td>';
+}
+
 function teacherTasks(rows, filters, selected) {
   const tableRows = rows.map(a => '<tr role="row"' + (a.id === selected ? ' class="teacher-selected"' : '') +
     '><th scope="row" role="rowheader"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) + esc(a.title) +
-    '</span></th><td role="cell">' + esc(a.kind) + '</td><td role="cell">' + esc(a.due || '—') + '</td><td role="cell">' +
+    '</span></th>' + teacherCell('Skill', esc(a.kind)) + teacherCell('Due date', esc(a.due || 'None')) + '<td role="cell">' +
     link('/assignments/' + a.id, 'Open', 'light') + '</td></tr>').join('');
   return teacherHero('assignments', 'Assignments', 'Browse and manage IELTS assignments for your students.',
     link('/admin', 'Manage assignments', 'accent', 'arrow')) +
@@ -429,8 +434,8 @@ function students({ student: selected }) {
     const needsReview = submissions.some(row => row.raw === null && row.band === null);
     return '<tr role="row" data-needs-review="' + needsReview + '"' + (student.id === selected ? ' class="teacher-selected"' : '') +
       '><th scope="row" role="rowheader"><span class="workspace-assignment-name"><span class="avatar">' + initials(student.name) +
-      '</span><span>' + esc(student.name) + '<span class="teacher-student-email">' + esc(student.email) + '</span></span></span></th><td role="cell">' +
-      submissions.length + ' / ' + dashboard.assignments.length + '</td><td role="cell">' +
+      '</span><span>' + esc(student.name) + '<span class="teacher-student-email">' + esc(student.email) + '</span></span></span></th>' +
+      teacherCell('Submissions', submissions.length + ' / ' + dashboard.assignments.length) + '<td role="cell">' +
       link('/students/' + student.id, 'Progress', 'light', 'next') + '</td></tr>';
   }).join('');
   return teacherHero('students', 'Students', 'View your students and their assignment progress.',
@@ -457,9 +462,10 @@ function results({ result: selected }) {
       (pending ? 'pending' : 'scored') + '"' +
       (selected?.[0] === a.id && selected[1] === row.student ? ' class="teacher-selected"' : '') +
       '><th scope="row" role="rowheader"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) + '<span>' +
-      esc(a.title) + '<span class="teacher-student-email">' + esc(a.kind) + '</span></span></span></th><td role="cell">' +
-      esc(studentsById.get(row.student) || 'Student') + '</td><td role="cell">' + esc(row.submitted.slice(0, 10)) +
-      '</td><td role="cell"><span class="pill' + (pending ? ' pending' : '') + '">' + esc(status) + '</span></td><td role="cell">' +
+      esc(a.title) + '<span class="teacher-student-email">' + esc(a.kind) + '</span></span></span></th>' +
+      teacherCell('Student', esc(studentsById.get(row.student) || 'Student')) +
+      teacherCell('Submitted', esc(row.submitted.slice(0, 10))) +
+      teacherCell('Result', '<span class="pill' + (pending ? ' pending' : '') + '">' + esc(status) + '</span>') + '<td role="cell">' +
       link('/results/' + a.id + '/' + row.student, a.questions ? 'Review answers' : 'Open', 'light') + '</td></tr>';
   }).join('');
   const filters = '<div class="teacher-result-filters"><label>Assignment<select name="assignment"><option value="">All assignments</option>' +
@@ -486,7 +492,7 @@ function bindTeacherResultFilters() {
     const query = fields.query.trim().toLowerCase();
     for (const row of rows) {
       const { assignment, skill, status } = row.dataset;
-      const searchable = row.cells[0].textContent + ' ' + row.cells[1].textContent;
+      const searchable = row.cells[0].textContent + ' ' + row.cells[1].lastChild.textContent;
       row.hidden = Boolean((fields.assignment && fields.assignment !== assignment) ||
         (fields.skill && fields.skill !== skill) || (fields.status && fields.status !== status) ||
         (query && !searchable.toLowerCase().includes(query)));
@@ -561,7 +567,7 @@ function render(route) {
 
 function openModal(title, contents, wide = false) {
   confirmDialogClose = undefined;
-  modal.classList.remove('admin-cd-editor');
+  modal.classList.remove('admin-cd-editor', 'invite-dialog');
   modal.classList.toggle('cd-dialog', wide);
   const route = readRoute();
   modal.classList.toggle('teacher-drawer', Boolean(user && teacher() && !wide &&
@@ -620,13 +626,13 @@ async function showAdminAssignments(message = '') {
   if (readRoute().page !== 'admin') return;
   adminAssignments = assignments;
   app.innerHTML = '<div class="admin-page"><header class="admin-bar"><a href="/" aria-label="Walker IELTS home">' + brand + '</a>' +
-    '<span>Admin</span><div class="admin-actions">' + link('/dashboard', 'Teacher dashboard') + action('admin-password', 'Change password') +
-    action('admin-logout', 'Sign out', 'light', 'logout') + '</div></header>' +
+    '<span>Admin</span><details class="admin-tools"><summary>Admin tools</summary><div class="admin-tool-list">' +
+    action('admin-import-reading', 'Import CD Reading', 'light') + action('admin-demo-student', 'Demo student', 'light') +
+    '<a class="btn light" href="/dashboard">Teacher dashboard</a>' + action('admin-password', 'Change password') +
+    action('admin-logout', 'Sign out', 'light', 'logout') + '</div></details></header>' +
     '<main class="admin-content"><div class="headline"><div><h1>Manage assignments</h1>' +
     '<p class="subhead">Publish and manage IELTS tests for your class.</p></div>' +
-    '<div class="admin-actions">' + action('admin-create', 'New assignment', 'accent', 'plus') +
-    action('admin-import-reading', 'Import CD Reading', 'light') +
-    action('admin-demo-student', 'Demo student', 'light') + '</div></div>' +
+    action('admin-create', 'New assignment', 'accent', 'plus') + '</div>' +
     (message ? '<p class="notice" role="status">' + esc(message) + '</p>' : '') + errorLine +
     (assignments.length ? '<div class="teacher-result-filters admin-filters"><label>Search assignments<input type="search"></label>' +
       '<label>Skill<select><option value="">All skills</option>' + kinds.map(kind => '<option>' + kind + '</option>').join('') +
@@ -638,6 +644,13 @@ async function showAdminAssignments(message = '') {
       '<div class="admin-actions">' + action('admin-edit:' + assignment.id, 'Edit', 'light', 'writing') +
       action('admin-delete:' + assignment.id, 'Delete', 'light admin-delete') + '</div></article>'
     ).join('') || empty('No assignments yet.')) + '<p class="teacher-filter-empty" role="status" hidden>No matching assignments.</p></section></main></div>';
+  const toolsMenu = app.querySelector('.admin-tools');
+  toolsMenu.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && toolsMenu.open) {
+      toolsMenu.open = false;
+      toolsMenu.querySelector('summary').focus();
+    }
+  });
   const rows = [...app.querySelectorAll('.admin-assignment')];
   for (const row of rows) {
     const title = row.querySelector('strong').textContent;
@@ -976,7 +989,11 @@ function openCdReading(assignment, result) {
   const tag = result ? 'div' : 'form';
   const timer = result ? '' : '<div class="cd-timer"><span>Time remaining <strong data-reading-time>60:00</strong></span>' +
     '<button type="button" class="btn light" data-reading-pause>Start or reopen test</button><span class="help" data-reading-status role="status">The timer runs until you pause or submit.</span></div>';
-  openModal(assignment.title, '<' + tag + ' class="cd-test">' + summary + timer + '<div class="cd-tools">' +
+  const jump = '<nav class="cd-jump" aria-label="Jump within passage">' +
+    '<button type="button" class="btn light" data-cd-jump="passage">Read passage</button>' +
+    '<button type="button" class="btn light" data-cd-jump="questions">Go to questions</button></nav>';
+  openModal(assignment.title, '<' + tag + ' class="cd-test">' + summary +
+    '<div class="cd-toolbar">' + timer + jump + '</div><div class="cd-tools">' +
     '<a class="cd-telegram" href="https://t.me/walker_ielts" target="_blank" rel="noopener">' + providerIcons.telegram + 'Walker IELTS on Telegram</a>' +
     '<div class="cd-utility"><label>Text size<select name="text-size"><option value="standard">Standard</option><option value="large">Large</option></select></label>' +
     '<button type="button" class="btn light" data-highlight>Highlight selection</button><button type="button" class="btn light" data-clear-highlight>Clear highlights</button></div></div>' +
@@ -991,6 +1008,15 @@ function openCdReading(assignment, result) {
     tabButtons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === part)));
   }
   select(0);
+  const toolbar = form.querySelector('.cd-toolbar');
+  for (const button of toolbar.querySelectorAll('[data-cd-jump]')) {
+    button.onclick = () => {
+      const target = form.querySelector('.cd-part:not([hidden]) .cd-' + button.dataset.cdJump);
+      const offset = toolbar.offsetHeight + 8;
+      target.focus({ preventScroll: true });
+      modal.scrollTo({ top: modal.scrollTop + target.getBoundingClientRect().top - modal.getBoundingClientRect().top - offset });
+    };
+  }
   for (const button of tabButtons) button.onclick = () => select(Number(button.dataset.cdPart));
   form.querySelector('[name=text-size]').onchange = event => form.classList.toggle('cd-large', event.target.value === 'large');
   const highlight = form.querySelector('[data-highlight]');
@@ -1021,7 +1047,7 @@ function startReadingTimer(form, assignment, answerCount) {
   const status = form.querySelector('[data-reading-status]');
   const progress = form.querySelector('.cd-progress');
   const submit = form.querySelector('[type=submit]');
-  const protectedAreas = form.querySelectorAll('.cd-tools,.cd-tabs,.cd-part');
+  const protectedAreas = form.querySelectorAll('.cd-jump,.cd-tools,.cd-tabs,.cd-part');
   let state;
   let deadline;
   let busy = false;
@@ -1196,8 +1222,9 @@ function studentProgress(id) {
   const byAssignment = new Map(rows.map(row => [row.assignment, row]));
   const assignments = dashboard.assignments.map(a => {
     const row = byAssignment.get(a.id);
-    return '<tr role="row"><th scope="row" role="rowheader">' + esc(a.title) + '</th><td role="cell">' + (row ? esc(score(row, a)) : 'Not submitted') +
-      '</td><td role="cell">' + (row ? link('/results/' + a.id + '/' + id, 'Open', 'light') : '—') + '</td></tr>';
+    return '<tr role="row"><th scope="row" role="rowheader">' + esc(a.title) + '</th>' +
+      teacherCell('Result', row ? esc(score(row, a)) : 'Not submitted') +
+      '<td role="cell">' + (row ? link('/results/' + a.id + '/' + id, 'Open', 'light') : '') + '</td></tr>';
   }).join('');
   openModal('Student progress', '<div class="teacher-progress-profile"><span class="avatar">' + initials(student.name) +
     '</span><div><strong>' + esc(student.name) + '</strong><p>' + rows.length + ' / ' + dashboard.assignments.length +
@@ -1206,6 +1233,14 @@ function studentProgress(id) {
 }
 
 async function handleAction(event) {
+  const toolsMenu = app.querySelector('.admin-tools[open]');
+  if (toolsMenu) {
+    const inside = toolsMenu.contains(event.target);
+    if (!inside || event.target.closest('button, a')) {
+      if (inside) toolsMenu.querySelector('summary').focus();
+      toolsMenu.open = false;
+    }
+  }
   const anchor = event.target.closest('a[data-route]');
   if (anchor && !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
     event.preventDefault();
