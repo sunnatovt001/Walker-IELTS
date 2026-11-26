@@ -73,9 +73,16 @@ function showRoute() {
     landing();
     return;
   }
+  if (!user && route.page === 'not-found') {
+    document.title = 'Page not found | Walker IELTS';
+    app.innerHTML = '<main class="content"><section class="workspace-panel connection-error">' +
+      '<h1>Page not found</h1><p>Check the address or return to the Walker IELTS homepage.</p>' +
+      link('/', 'Back to home', 'accent') + '</section></main>';
+    return;
+  }
   if (!user) {
     if (route.page !== 'login') {
-      const next = route.page === 'not-found' ? pathsByPage.home : location.pathname;
+      const next = location.pathname;
       history.replaceState(null, '', '/login' + (next === pathsByPage.home ? '' : '?next=' + encodeURIComponent(next)));
     }
     login();

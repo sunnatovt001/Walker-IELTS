@@ -535,6 +535,13 @@ export async function handler(req, res) {
       res.writeHead(200, { 'Content-Type': contentType }).end(readFileSync(new URL('./public/' + name, import.meta.url)));
       return;
     }
+    if (path !== '/api' && !path.startsWith('/api/')) {
+      if (req.method === 'GET') {
+        return res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' })
+          .end(readFileSync(new URL('./public/404.html', import.meta.url)));
+      }
+      fail(404, 'Page not found.');
+    }
     await databaseReady();
     if (path.startsWith('/api/admin/')) return await handleAdmin(req, res, path);
     const token = cookie(req);
