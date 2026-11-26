@@ -1,7 +1,10 @@
 const passageHeading = /^(?:READING\s+)?PASSAGE\s+([123])\s*[:.\-–—]?\s*$/i;
 const questionsHeading = /^Questions?\s+(\d{1,2})(?:\s*(?:[-–—]|and|&)\s*(\d{1,2}))?\s*[.:]?$/i;
 const testHeading = /^(?:ACADEMIC READING |READING )?TEST\s+(\d{1,2})\s*$/i;
-const answerHeading = /^(?:(?:READING\s+)?ANSWER\s*KEY|(?:VERIFIED |READING )?ANSWERS)(?:\s*[·:–—-]?\s*(?:TEST\s+(\d{1,2})))?\s*$/i;
+const answerHeading = /^(?:(?:READING\s+|LISTENING\s+(?:AND|&)\s+READING\s+|VERIFIED\s+)?(?:ANSWER\s+KEYS?|ANSWERS|ANSWER\s+SHEET)|KEY\s+TO\s+(?:THE\s+)?(?:READING\s+)?TESTS?)(?:\s*[·:–—-]?\s*TEST\s+(\d{1,2}))?\s*[:.]?$/i;
+const numberedKey = /^(0?[1-9]|[1-3]\d|40)(?:[.):\s]+\s*(\S.*))?$/;
+const skillHeading = /^(READING|LISTENING|WRITING|SPEAKING)(?:\s+(?:ANSWER\s+KEYS?|ANSWERS))?\s*[:.]?$/i;
+const keyTestHeading = /^TEST\s+(\d{1,2})\s*[-–—·:]?\s+(READING|LISTENING)(?:\s+(?:ANSWER\s+KEYS?|ANSWERS))?\s*[:.]?$/i;
 const bookFingerprint = '8238491ded005491f31f322b41acaa927f5cc604c2bd37e2ab8b609ba3d10683';
 
 // Page anchors for this edition. Several printed passage and question labels are missing or inconsistent.
@@ -40,7 +43,7 @@ function pageLines(items, pageHeight, bookBody = false) {
     }
     if (item.hasEOL) line = undefined;
   }
-  return lines.map(row => row.text);
+  return lines;
 }
 
 function normalizeKey(value) {
@@ -210,36 +213,64 @@ function parseGeneric(pages) {
   let current;
   let answers = false;
   let keyNumber;
+  let keySkill;
+  let pendingTest;
   const keys = new Map();
   for (const page of pages.slice(1)) {
-    for (const line of page.lines) {
+    for (const [index, row] of page.lines.entries()) {
+      const line = row.text;
       const answer = answerHeading.exec(line);
       const heading = testHeading.exec(line);
       const passage = passageHeading.exec(line);
-      if (answer) {
+      const skill = skillHeading.exec(line);
+      const keyTest = keyTestHeading.exec(line);
+      if (keyTest && (answers || /answers?|keys?/i.test(line))) {
         answers = true;
-        keyNumber = Number(answer[1]) || current?.number || 1;
+        keyNumber = Number(keyTest[1]);
+        keySkill = keyTest[2].toLowerCase();
+        pendingTest = undefined;
+      } else if (answer) {
+        if (!answers || answer[1]) keyNumber = Number(answer[1]) || current?.number || 1;
+        answers = true;
+        keySkill = /^READING\b/i.test(line) ? 'reading' : '';
+        pendingTest = undefined;
       } else if (heading) {
         const number = Number(heading[1]);
-        if (answers) keyNumber = number;
-        else if (!current || current.number !== number) {
+        if (answers) {
+          keyNumber = pendingTest = number;
+          keySkill = '';
+        } else if (!current || current.number !== number) {
           current = { number, parts: [] };
           candidates.push(current);
         }
       } else if (passage) {
-        answers = false;
         const part = Number(passage[1]);
+        const next = page.lines[index + 1]?.text;
+        if (answers && /^(?:0?[1-9]|[1-3]\d|40)(?:[.):\s]|$)/.test(next || '')) {
+          keySkill = 'reading';
+          continue;
+        }
+        answers = false;
         if (!current || (part === 1 && current.parts.length)) {
-          current = { number: (current?.number || 0) + 1, parts: [] };
+          current = { number: pendingTest || (current?.number || 0) + 1, parts: [] };
           candidates.push(current);
         }
+        pendingTest = undefined;
         current.parts.push([]);
+      } else if (skill && (answers || /answers?|keys?/i.test(line))) {
+        answers = true;
+        keyNumber ||= current?.number || 1;
+        keySkill = skill[1].toLowerCase();
       } else if (answers) {
-        const match = /^(0?[1-9]|[1-3]\d|40)[.)\s]+\s*(\S.*)$/.exec(line);
-        if (match) {
-          if (!keys.has(keyNumber)) keys.set(keyNumber, new Map());
-          keys.get(keyNumber).set(Number(match[1]), normalizeKey(match[2].trim()));
-        }
+        if (keySkill && keySkill !== 'reading') continue;
+        const match = numberedKey.exec(line);
+        if (!match) continue;
+        const next = page.lines[index + 1];
+        const value = match[2] || (next && next.x > row.x && Math.abs(next.y - row.y) < 4 &&
+          !numberedKey.test(next.text) ? next.text : '');
+        if (!value) continue;
+        if (!keys.has(keyNumber)) keys.set(keyNumber, new Map());
+        keys.get(keyNumber).set(Number(match[1]), normalizeKey(value.trim()));
       } else current?.parts.at(-1)?.push(line);
     }
   }
@@ -300,7 +331,7 @@ export async function extractReadingTests(file, onProgress, signal) {
             }
           }
         }
-        pages.push({ body: pageLines(items, page.view[3], true), key });
+        pages.push({ body: pageLines(items, page.view[3], true).map(row => row.text), key });
       } else {
         pages.push({ lines: pageLines(items, page.view[3]) });
       }
