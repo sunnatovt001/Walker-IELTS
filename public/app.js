@@ -25,6 +25,11 @@ const brand = '<img class="brand" src="/walker-logo.png" width="568" height="255
 const labels = { home: 'Dashboard', tasks: 'Assignments', students: 'Students', results: 'Results' };
 let user;
 let demo;
+let detailTrigger;
+let previousWorkspacePage;
+let resultFilters = {};
+let rosterPending = false;
+let confirmDialogClose;
 const pathsByPage = { home: '/dashboard', tasks: '/assignments', students: '/students', results: '/results' };
 const skillPath = kind => pathsByPage.tasks + (kind ? '/' + kind.toLowerCase() : '');
 
@@ -56,6 +61,7 @@ function navigate(path, { replace = false, detail = false } = {}) {
 
 function showRoute() {
   const route = readRoute();
+  confirmDialogClose = undefined;
   if (modal.open) modal.close();
   stopLandingScroll?.();
   stopLandingScroll = undefined;
@@ -182,7 +188,7 @@ function animateLanding(landingPage) {
     frame = 0;
     const scroll = window.scrollY;
     header.classList.toggle('landing-header-floating', scroll > 8);
-    if (motion.matches) {
+    if (motion.matches || location.hash === '#skills') {
       notebook.classList.remove('notebook-stacked');
       return;
     }
@@ -216,12 +222,14 @@ function animateLanding(landingPage) {
   window.addEventListener('scroll', schedule, { passive: true });
   window.addEventListener('resize', schedule);
   motion.addEventListener('change', schedule);
+  window.addEventListener('hashchange', schedule);
 
   return () => {
     cancelAnimationFrame(frame);
     window.removeEventListener('scroll', schedule);
     window.removeEventListener('resize', schedule);
     motion.removeEventListener('change', schedule);
+    window.removeEventListener('hashchange', schedule);
   };
 }
 
@@ -242,12 +250,12 @@ let oauthLink;
 function providerOptions() {
   const next = new URLSearchParams(location.search).get('next') || '/dashboard';
   return '<div class="login-providers" role="group" aria-label="Other sign-in methods">' + Object.entries(providerNames).map(([provider, name]) => {
-    const label = 'Continue with ' + name;
+    const label = providers.includes(provider) ? 'Continue with ' + name : name + ' sign-in unavailable';
     const attributes = ' class="login-provider ' + provider + '" aria-label="' + label + '" title="' + label + '"';
     if (!providers.includes(provider)) return '<button' + attributes + ' type="button" disabled>' + providerIcons[provider] + '</button>';
     return '<a' + attributes + ' href="/api/oauth/' + provider + '/start?next=' + encodeURIComponent(next) + '">' + providerIcons[provider] + '</a>';
   }).join('') + '</div>' +
-    (providers.length < 2 ? '<p class="help login-provider-status">Unavailable providers require configuration.</p>' : '');
+    (providers.length < 2 ? '<p class="help login-provider-status">If Google or Telegram is unavailable, sign in with your email and password.</p>' : '');
 }
 
 function login(email = '', message = '') {
@@ -341,6 +349,24 @@ function home() {
   const pending = dashboard.submissions.filter(s => s.raw === null && s.band === null);
   const activity = isTeacher ? pending : dashboard.submissions.filter(s => !pending.includes(s));
   const assignments = dashboard.assignments.slice(0, 4);
+  const recent = '<section class="workspace-panel"><div class="workspace-panel-heading"><h2>' +
+    (isTeacher ? 'Recent assignments' : 'My assignments') + '</h2>' + link('/assignments', 'View all', 'light', 'arrow') + '</div>' +
+    (assignments.length ? '<table class="workspace-table"><thead><tr><th scope="col">Assignment</th><th scope="col">Skill</th>' +
+      '<th scope="col">Due date</th><th scope="col"><span class="workspace-visually-hidden">Action</span></th></tr></thead><tbody>' +
+      assignments.map(a => '<tr><th scope="row"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) +
+        '<span>' + esc(a.title) + '<small>' + esc(a.kind + (a.due ? ' · ' + a.due : '')) + '</small></span></span></th><td>' +
+        esc(a.kind) + '</td><td>' +
+        (a.due && Number.isFinite(Date.parse(a.due)) ? assignmentDate.format(new Date(a.due)) : '—') + '</td><td>' +
+        link('/assignments/' + a.id, 'Open', 'light') + '</td></tr>').join('') + '</tbody></table>' :
+      empty('No assignments yet.')) + '</section>';
+  const review = '<section class="workspace-panel workspace-activity"><div class="workspace-panel-heading"><h2>' +
+    (isTeacher ? 'Review queue' : 'Recent results') + '</h2>' +
+    (activity.length ? link('/results', 'View all', 'light', 'arrow') : '') + '</div>' +
+    (activity.length ? activity.slice(0, 3).map(resultRow).join('') :
+      '<div class="workspace-empty">' + tile(isTeacher ? 'clock' : 'results', isTeacher ? 'red-soft' : 'blue-soft') +
+      '<div><strong>' + (isTeacher ? 'You’re all caught up' : 'No results yet') + '</strong><p>' +
+      (isTeacher ? 'No submissions to review.' : 'Your results will appear here after your assignments are scored.') +
+      '</p></div></div>') + '</section>';
   return '<section class="workspace-hero"><h1>' + (isTeacher ? 'Teacher dashboard' : 'Student workspace') +
     '</h1><p>' + (isTeacher ? 'Assign, monitor, and review IELTS work for your students.' :
       'Access your IELTS assignments, track submissions, and view your results.') + '</p>' +
@@ -350,24 +376,7 @@ function home() {
     (isTeacher ? stat('Students', dashboard.students.length, 'students', 'blue-rich') :
       stat('Submitted', dashboard.submissions.length, 'check', 'blue-rich')) +
     stat('Pending review', pending.length, 'clock', 'red-soft') + '</section>' +
-    '<div class="workspace-grid"><div class="workspace-column"><section class="workspace-panel"><div class="workspace-panel-heading"><h2>' +
-    (isTeacher ? 'Recent assignments' : 'My assignments') + '</h2>' + link('/assignments', 'View all', 'light', 'arrow') + '</div>' +
-    (assignments.length ? '<table class="workspace-table"><thead><tr><th scope="col">Assignment</th><th scope="col">Skill</th>' +
-      '<th scope="col">Due date</th><th scope="col"><span class="workspace-visually-hidden">Action</span></th></tr></thead><tbody>' +
-      assignments.map(a => '<tr><th scope="row"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) +
-        '<span>' + esc(a.title) + '<small>' + esc(a.kind + (a.due ? ' · ' + a.due : '')) + '</small></span></span></th><td>' +
-        esc(a.kind) + '</td><td>' +
-        (a.due && Number.isFinite(Date.parse(a.due)) ? assignmentDate.format(new Date(a.due)) : '—') + '</td><td>' +
-        link('/assignments/' + a.id, 'Open', 'light') + '</td></tr>').join('') + '</tbody></table>' :
-      empty('No assignments yet.')) +
-    '</section><section class="workspace-panel workspace-activity"><div class="workspace-panel-heading"><h2>' +
-    (isTeacher ? 'Review queue' : 'Recent results') + '</h2>' +
-    (activity.length ? link('/results', 'View all', 'light', 'arrow') : '') + '</div>' +
-    (activity.length ? activity.slice(0, 3).map(resultRow).join('') :
-      '<div class="workspace-empty">' + tile(isTeacher ? 'clock' : 'results', isTeacher ? 'red-soft' : 'blue-soft') +
-      '<div><strong>' + (isTeacher ? 'You’re all caught up' : 'No results yet') + '</strong><p>' +
-      (isTeacher ? 'No submissions to review.' : 'Your results will appear here after your assignments are scored.') +
-      '</p></div></div>') + '</section></div>' +
+    '<div class="workspace-grid"><div class="workspace-column">' + (isTeacher ? review + recent : recent + review) + '</div>' +
     '<section class="workspace-panel"><div class="workspace-panel-heading"><h2>IELTS skills</h2></div><div class="workspace-skills">' + kinds.map(kind => {
       const count = dashboard.assignments.filter(a => a.kind === kind).length;
       return '<a href="' + skillPath(kind) + '" data-route>' + tile(kind.toLowerCase()) + '<span><strong>' +
@@ -381,16 +390,16 @@ function teacherHero(page, title, description, control = '') {
 }
 
 function teacherTable(caption, headers, rows) {
-  return '<div class="teacher-table-wrap"><table class="workspace-table teacher-table"><caption class="workspace-visually-hidden">' +
-    caption + '</caption><thead><tr>' + headers.map(header => '<th scope="col">' + header + '</th>').join('') +
-    '<th scope="col"><span class="workspace-visually-hidden">Action</span></th></tr></thead><tbody>' + rows +
+  return '<div class="teacher-table-wrap"><table class="workspace-table teacher-table" role="table"><caption class="workspace-visually-hidden">' +
+    caption + '</caption><thead role="rowgroup"><tr role="row">' + headers.map(header => '<th scope="col" role="columnheader">' + header + '</th>').join('') +
+    '<th scope="col" role="columnheader"><span class="workspace-visually-hidden">Action</span></th></tr></thead><tbody role="rowgroup">' + rows +
     '</tbody></table></div>';
 }
 
 function teacherTasks(rows, filters, selected) {
-  const tableRows = rows.map(a => '<tr' + (a.id === selected ? ' class="teacher-selected"' : '') +
-    '><th scope="row"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) + esc(a.title) +
-    '</span></th><td>' + esc(a.kind) + '</td><td>' + esc(a.due || '—') + '</td><td>' +
+  const tableRows = rows.map(a => '<tr role="row"' + (a.id === selected ? ' class="teacher-selected"' : '') +
+    '><th scope="row" role="rowheader"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) + esc(a.title) +
+    '</span></th><td role="cell">' + esc(a.kind) + '</td><td role="cell">' + esc(a.due || '—') + '</td><td role="cell">' +
     link('/assignments/' + a.id, 'Open', 'light') + '</td></tr>').join('');
   return teacherHero('assignments', 'Assignments', 'Browse and manage IELTS assignments for your students.',
     link('/admin', 'Manage assignments', 'accent', 'arrow')) +
@@ -418,10 +427,10 @@ function students({ student: selected }) {
   const rows = dashboard.students.map(student => {
     const submissions = dashboard.submissions.filter(row => row.student === student.id);
     const needsReview = submissions.some(row => row.raw === null && row.band === null);
-    return '<tr data-needs-review="' + needsReview + '"' + (student.id === selected ? ' class="teacher-selected"' : '') +
-      '><th scope="row"><span class="workspace-assignment-name"><span class="avatar">' + initials(student.name) +
-      '</span><span>' + esc(student.name) + '<span class="teacher-student-email">' + esc(student.email) + '</span></span></span></th><td>' +
-      submissions.length + ' / ' + dashboard.assignments.length + '</td><td>' +
+    return '<tr role="row" data-needs-review="' + needsReview + '"' + (student.id === selected ? ' class="teacher-selected"' : '') +
+      '><th scope="row" role="rowheader"><span class="workspace-assignment-name"><span class="avatar">' + initials(student.name) +
+      '</span><span>' + esc(student.name) + '<span class="teacher-student-email">' + esc(student.email) + '</span></span></span></th><td role="cell">' +
+      submissions.length + ' / ' + dashboard.assignments.length + '</td><td role="cell">' +
       link('/students/' + student.id, 'Progress', 'light', 'next') + '</td></tr>';
   }).join('');
   return teacherHero('students', 'Students', 'View your students and their assignment progress.',
@@ -444,13 +453,13 @@ function results({ result: selected }) {
     if (!a) return '';
     const status = score(row, a);
     const pending = status === 'Pending review';
-    return '<tr data-assignment="' + a.id + '" data-skill="' + esc(a.kind) + '" data-status="' +
+    return '<tr role="row" data-assignment="' + a.id + '" data-skill="' + esc(a.kind) + '" data-status="' +
       (pending ? 'pending' : 'scored') + '"' +
       (selected?.[0] === a.id && selected[1] === row.student ? ' class="teacher-selected"' : '') +
-      '><th scope="row"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) + '<span>' +
-      esc(a.title) + '<span class="teacher-student-email">' + esc(a.kind) + '</span></span></span></th><td>' +
-      esc(studentsById.get(row.student) || 'Student') + '</td><td>' + esc(row.submitted.slice(0, 10)) +
-      '</td><td><span class="pill' + (pending ? ' pending' : '') + '">' + esc(status) + '</span></td><td>' +
+      '><th scope="row" role="rowheader"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) + '<span>' +
+      esc(a.title) + '<span class="teacher-student-email">' + esc(a.kind) + '</span></span></span></th><td role="cell">' +
+      esc(studentsById.get(row.student) || 'Student') + '</td><td role="cell">' + esc(row.submitted.slice(0, 10)) +
+      '</td><td role="cell"><span class="pill' + (pending ? ' pending' : '') + '">' + esc(status) + '</span></td><td role="cell">' +
       link('/results/' + a.id + '/' + row.student, a.questions ? 'Review answers' : 'Open', 'light') + '</td></tr>';
   }).join('');
   const filters = '<div class="teacher-result-filters"><label>Assignment<select name="assignment"><option value="">All assignments</option>' +
@@ -469,8 +478,11 @@ function bindTeacherResultFilters() {
   const filters = app.querySelector('.teacher-result-filters');
   if (!filters) return;
   const rows = [...app.querySelectorAll('.teacher-table tbody tr')];
-  filters.addEventListener('input', () => {
-    const fields = Object.fromEntries([...filters.querySelectorAll('input,select')].map(field => [field.name, field.value]));
+  const controls = [...filters.querySelectorAll('input,select')];
+  for (const field of controls) field.value = resultFilters[field.name] || '';
+  function applyFilters() {
+    const fields = Object.fromEntries(controls.map(field => [field.name, field.value]));
+    resultFilters = fields;
     const query = fields.query.trim().toLowerCase();
     for (const row of rows) {
       const { assignment, skill, status } = row.dataset;
@@ -480,11 +492,19 @@ function bindTeacherResultFilters() {
         (query && !searchable.toLowerCase().includes(query)));
     }
     app.querySelector('.teacher-filter-empty').hidden = rows.some(row => !row.hidden);
-  });
+  }
+  filters.addEventListener('input', applyFilters);
+  applyFilters();
 }
 
 function render(route) {
   const { page } = route;
+  if (page !== previousWorkspacePage) {
+    resultFilters = {};
+    rosterPending = false;
+    previousWorkspacePage = page;
+  }
+  if (route.assignment && history.state?.detail) route.skill = detailTrigger?.skill;
   const role = teacher() ? 'Teacher' : 'Student';
   const navigation = ['home', 'tasks', ...(teacher() ? ['students'] : []), 'results'];
   const unavailable = page === 'not-found' || (page === 'students' && !teacher());
@@ -511,14 +531,20 @@ function render(route) {
   if (unavailable) return;
   if (page === 'results' && teacher()) bindTeacherResultFilters();
   const rosterFilters = app.querySelector('.teacher-roster-filters');
-  rosterFilters?.addEventListener('click', event => {
-    const selected = event.target.closest('button');
-    if (!selected) return;
-    const pendingOnly = selected.hasAttribute('data-pending');
-    for (const button of rosterFilters.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button === selected));
+  function applyRosterFilter(pendingOnly) {
+    rosterPending = pendingOnly;
+    for (const button of rosterFilters.querySelectorAll('button')) {
+      button.setAttribute('aria-pressed', String(button.hasAttribute('data-pending') === pendingOnly));
+    }
     const rows = [...app.querySelectorAll('[data-needs-review]')];
     for (const row of rows) row.hidden = pendingOnly && row.dataset.needsReview !== 'true';
     app.querySelector('.teacher-filter-empty').hidden = rows.some(row => !row.hidden);
+  }
+  if (rosterFilters) applyRosterFilter(rosterPending);
+  rosterFilters?.addEventListener('click', event => {
+    const selected = event.target.closest('button');
+    if (!selected) return;
+    applyRosterFilter(selected.hasAttribute('data-pending'));
   });
   if (route.assignment) {
     const assignment = dashboard.assignments.find(item => item.id === route.assignment);
@@ -527,9 +553,15 @@ function render(route) {
   }
   if (route.student) studentProgress(route.student);
   if (route.result) viewResult(...route.result);
+  if (!modal.open && detailTrigger && detailTrigger.from === location.pathname) {
+    [...app.querySelectorAll('a[data-route]')].find(link => link.pathname === detailTrigger.path && link.getClientRects().length)?.focus();
+    detailTrigger = undefined;
+  }
 }
 
 function openModal(title, contents, wide = false) {
+  confirmDialogClose = undefined;
+  modal.classList.remove('admin-cd-editor');
   modal.classList.toggle('cd-dialog', wide);
   const route = readRoute();
   modal.classList.toggle('teacher-drawer', Boolean(user && teacher() && !wide &&
@@ -576,7 +608,7 @@ function adminLogin() {
     '<section class="admin-login-box"><h1>Admin sign in</h1><form>' +
     '<label>Username<input name="username" required autocomplete="username" maxlength="100" autocapitalize="none"></label>' +
     '<label>Password<input name="password" type="password" required autocomplete="current-password" maxlength="200"></label>' +
-    submitButton('Sign in') + '</form><a href="/">Back to home</a></section></main>';
+    submitButton('Sign in') + '</form><a href="/dashboard">Back to dashboard</a> <a href="/">Back to home</a></section></main>';
   bindForm(app, async values => {
     await api('admin/login', Object.fromEntries(values));
     await loadAdmin();
@@ -588,21 +620,39 @@ async function showAdminAssignments(message = '') {
   if (readRoute().page !== 'admin') return;
   adminAssignments = assignments;
   app.innerHTML = '<div class="admin-page"><header class="admin-bar"><a href="/" aria-label="Walker IELTS home">' + brand + '</a>' +
-    '<span>Admin</span><div class="admin-actions">' + action('admin-password', 'Change password') +
+    '<span>Admin</span><div class="admin-actions">' + link('/dashboard', 'Teacher dashboard') + action('admin-password', 'Change password') +
     action('admin-logout', 'Sign out', 'light', 'logout') + '</div></header>' +
     '<main class="admin-content"><div class="headline"><div><h1>Manage assignments</h1>' +
     '<p class="subhead">Publish and manage IELTS tests for your class.</p></div>' +
-    '<div class="admin-actions">' + action('admin-demo-student', 'Demo student', 'light') +
+    '<div class="admin-actions">' + action('admin-create', 'New assignment', 'accent', 'plus') +
     action('admin-import-reading', 'Import CD Reading', 'light') +
-    action('admin-create', 'New assignment', 'accent', 'plus') + '</div></div>' +
+    action('admin-demo-student', 'Demo student', 'light') + '</div></div>' +
     (message ? '<p class="notice" role="status">' + esc(message) + '</p>' : '') + errorLine +
+    (assignments.length ? '<div class="teacher-result-filters admin-filters"><label>Search assignments<input type="search"></label>' +
+      '<label>Skill<select><option value="">All skills</option>' + kinds.map(kind => '<option>' + kind + '</option>').join('') +
+      '</select></label></div>' : '') +
     '<section class="panel" aria-label="Assignments">' + (assignments.map(assignment =>
-      '<article class="row admin-assignment">' + tile(assignment.kind.toLowerCase()) +
+      '<article class="row admin-assignment" data-skill="' + esc(assignment.kind) + '">' + tile(assignment.kind.toLowerCase()) +
       '<div class="grow"><strong>' + esc(assignment.title) + '</strong><small>' + assignment.kind + ' · ' +
       assignment.submissionCount + (assignment.submissionCount === 1 ? ' submission' : ' submissions') + '</small></div>' +
       '<div class="admin-actions">' + action('admin-edit:' + assignment.id, 'Edit', 'light', 'writing') +
-      action('admin-delete:' + assignment.id, 'Delete') + '</div></article>'
-    ).join('') || empty('No assignments yet.')) + '</section></main></div>';
+      action('admin-delete:' + assignment.id, 'Delete', 'light admin-delete') + '</div></article>'
+    ).join('') || empty('No assignments yet.')) + '<p class="teacher-filter-empty" role="status" hidden>No matching assignments.</p></section></main></div>';
+  const rows = [...app.querySelectorAll('.admin-assignment')];
+  for (const row of rows) {
+    const title = row.querySelector('strong').textContent;
+    for (const button of row.querySelectorAll('button')) {
+      button.setAttribute('aria-label', button.textContent.trim() + ' ' + title);
+    }
+  }
+  const filters = app.querySelector('.admin-filters');
+  filters?.addEventListener('input', () => {
+    const query = filters.querySelector('input').value.trim().toLowerCase();
+    const skill = filters.querySelector('select').value;
+    for (const row of rows) row.hidden = Boolean((skill && row.dataset.skill !== skill) ||
+      !row.querySelector('strong').textContent.toLowerCase().includes(query));
+    app.querySelector('.teacher-filter-empty').hidden = rows.some(row => !row.hidden);
+  });
 }
 
 function editAssignment(existing) {
@@ -616,8 +666,19 @@ function editAssignment(existing) {
     submitButton(existing ? 'Save changes' : 'Publish assignment') + '</form>');
   const selector = modal.querySelector('[name=kind]');
   const fields = modal.querySelector('#kind-fields');
+  const drafts = new Map();
+  let previousKind;
+  let dirty = false;
+  selector.form.addEventListener('input', () => { dirty = true; });
+  confirmDialogClose = () => !dirty || window.confirm('Discard unsaved changes to this assignment?');
   function renderFields() {
     const kind = selector.value;
+    if (previousKind) drafts.set(previousKind, [...fields.childNodes]);
+    previousKind = kind;
+    if (drafts.has(kind)) {
+      fields.replaceChildren(...drafts.get(kind));
+      return;
+    }
     const sameKind = existing?.kind === kind;
     const general = sameKind && existing.level === 'General';
     const retained = sameKind && existing.hasPdf;
@@ -654,24 +715,31 @@ function editAssignment(existing) {
   });
 }
 
-let readingPack = [];
-
 function importCdReading() {
+  let readingPack = [];
   openModal('Import CD Reading', '<form><label>Reading pack JSON<input type="file" name="pack" accept=".json,application/json"></label>' +
     '<label>Test<select name="test" aria-label="Test" required></select></label>' + submitButton('Review test') + '</form>');
   const input = modal.querySelector('[name=pack]');
   const picker = modal.querySelector('[name=test]');
+  const review = modal.querySelector('[type=submit]');
+  const alert = modal.querySelector('[role=alert]');
   function listTests() {
+    review.disabled = picker.disabled = !readingPack.length;
     picker.innerHTML = readingPack.length ? readingPack.map((test, index) =>
       '<option value="' + index + '">' + esc(test.title) + '</option>').join('') : '<option value="">Select a reading pack</option>';
   }
   listTests();
   input.onchange = async () => {
     readingPack = [];
+    listTests();
+    alert.textContent = '';
+    const selected = input.files[0];
+    if (!selected) return;
     try {
-      const file = input.files[0];
+      const file = selected;
       if (!file || file.size > 2 * 1024 * 1024) throw new Error('Select a reading pack under 2 MB.');
       const pack = JSON.parse(await file.text());
+      if (!input.isConnected || !modal.open || input.files[0] !== file) return;
       if (pack.format !== 'walker-reading-cd-v1' || !Array.isArray(pack.tests) || !pack.tests.length ||
           pack.tests.some(test => !test || typeof test.title !== 'string' || !Array.isArray(test.sections) ||
             !Array.isArray(test.keys) || test.sections.some(section => !section || !Array.isArray(section.groups) || section.groups.some(group => !group || !Array.isArray(group.numbers))))) {
@@ -680,7 +748,8 @@ function importCdReading() {
       readingPack = pack.tests;
       modal.querySelector('[role=alert]').textContent = '';
     } catch (error) {
-      showError(error, modal);
+      if (!input.isConnected || !modal.open || input.files[0] !== selected) return;
+      alert.textContent = error.message;
     }
     listTests();
   };
@@ -713,6 +782,10 @@ function editCdReading(test) {
     (notes.length ? '<div class="notice"><strong>Check the source before publishing</strong><ul>' + notes.map(note => '<li>' + esc(note) + '</li>').join('') + '</ul></div>' : '') +
     details + (!test.id ? '<label class="cd-confirm"><input type="checkbox" required> I have reviewed the passages, questions, and answer key.</label>' : '') +
     submitButton(test.id ? 'Save changes' : 'Publish assignment') + '</form>', true);
+  modal.classList.add('admin-cd-editor');
+  let dirty = false;
+  modal.querySelector('form').addEventListener('input', () => { dirty = true; });
+  confirmDialogClose = () => !dirty || window.confirm('Discard unsaved changes to this test?');
   // Open a collapsed section if one of its required fields fails browser validation.
   modal.querySelector('form').addEventListener('invalid', event => {
     const section = event.target.closest('details');
@@ -800,20 +873,34 @@ function viewAssignment(a) {
     (a.hasAudio ? '<audio controls preload="none" src="/api/assignments/' + a.id + '/audio"></audio>' : '');
   const questions = Array.from({ length: a.questions }, (_, i) => '<label>' + (i + 1) + '. Answer<input name="a' + i + '" maxlength="500"></label>').join('');
   const response = a.questions ? '<div class="answer-grid">' + questions + '</div>'
-    : a.kind === 'Speaking' ? '<label>Audio response<input name="audio" type="file" accept="audio/*" required></label>'
-    : '<label>Writing response<textarea name="response" required maxlength="40000"></textarea></label>';
+    : a.kind === 'Speaking' ? '<label>Audio response<input name="audio" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/ogg,audio/webm,audio/aac,audio/flac" aria-describedby="audio-guidance" required></label>' +
+      '<p class="help" id="audio-guidance">Choose an audio file such as MP3, M4A, or WAV. Maximum ' + maxUpload / 1048576 + ' MB.</p>'
+    : '<label>Writing response<textarea name="response" required maxlength="40000" aria-describedby="word-count"></textarea></label>' +
+      '<p class="help" id="word-count">0 words</p>';
   openModal(a.title, '<span class="pill">' + a.kind + (a.due ? ' · ' + esc(a.due) : '') + '</span>' +
     (a.cd ? '<p class="help">Computer-delivered Reading · ' + a.questions + ' questions</p>' : '') +
     (a.prompt ? '<div class="prompt">' + esc(a.prompt) + '</div>' : '') + (media ? '<div class="media">' + media + '</div>' : '') +
     (teacher() ? (a.questions ? '<div class="notice"><strong>Answer key</strong><ol>' + a.keys.map(key => '<li>' + esc(key) + '</li>').join('') + '</ol></div>' : '') :
       result ? '<div class="notice">' + esc(score(result, a)) + '</div>' + link('/results/' + a.id + '/' + user.id, 'View result') :
         '<form>' + response + submitButton('Submit assignment') + '</form>'));
+  const writing = modal.querySelector('textarea[name=response]');
+  writing?.addEventListener('input', () => {
+    const count = writing.value.trim().split(/\s+/).filter(Boolean).length;
+    modal.querySelector('#word-count').textContent = count + (count === 1 ? ' word' : ' words');
+  });
   if (!teacher() && !result) bindForm(modal, async values => {
     const form = a.questions ? { answers: Array.from({ length: a.questions }, (_, i) => values.get('a' + i)) }
       : a.kind === 'Speaking' ? { audio: await upload(values.get('audio')) } : { response: values.get('response') };
+    if (form.answers && !confirmAnswers(form.answers)) return;
     await api('assignments/' + a.id + '/submit', form);
     await refresh();
   });
+}
+
+function confirmAnswers(answers) {
+  const answered = answers.filter(value => value?.trim()).length;
+  return window.confirm('You answered ' + answered + ' of ' + answers.length +
+    ' questions. Your answers and score will be final. Submit this attempt?');
 }
 
 function cdAnswerControl(group, number, field) {
@@ -888,7 +975,7 @@ function openCdReading(assignment, result) {
     }).join('') + '</div></section>').join('');
   const tag = result ? 'div' : 'form';
   const timer = result ? '' : '<div class="cd-timer"><span>Time remaining <strong data-reading-time>60:00</strong></span>' +
-    '<button type="button" class="btn light" data-reading-pause disabled>Pause</button><span class="help" data-reading-status role="status"></span></div>';
+    '<button type="button" class="btn light" data-reading-pause>Start or reopen test</button><span class="help" data-reading-status role="status">The timer runs until you pause or submit.</span></div>';
   openModal(assignment.title, '<' + tag + ' class="cd-test">' + summary + timer + '<div class="cd-tools">' +
     '<a class="cd-telegram" href="https://t.me/walker_ielts" target="_blank" rel="noopener">' + providerIcons.telegram + 'Walker IELTS on Telegram</a>' +
     '<div class="cd-utility"><label>Text size<select name="text-size"><option value="standard">Standard</option><option value="large">Large</option></select></label>' +
@@ -937,7 +1024,7 @@ function startReadingTimer(form, assignment, answerCount) {
   const protectedAreas = form.querySelectorAll('.cd-tools,.cd-tabs,.cd-part');
   let state;
   let deadline;
-  let busy = true;
+  let busy = false;
   let expiredSubmissionStarted = false;
   let saveQueue = Promise.resolve();
   const active = () => form.isConnected && modal.open;
@@ -958,13 +1045,14 @@ function startReadingTimer(form, assignment, answerCount) {
   function draw() {
     const remaining = state ? (state.paused ? state.remaining : Math.max(0, deadline - performance.now())) : 3600000;
     const seconds = Math.ceil(remaining / 1000);
-    clock.textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+    clock.textContent = state ? Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0') : '—';
     form.classList.toggle('cd-timer-paused', Boolean(state?.paused));
-    for (const area of protectedAreas) area.inert = busy || state?.paused || remaining === 0;
-    pause.textContent = state?.paused ? 'Resume' : 'Pause';
-    pause.disabled = busy || !state || remaining === 0;
-    submit.disabled = busy || !state || Boolean(state?.paused);
-    const message = state?.paused ? 'Test paused. Resume to continue.' : remaining === 0 ? 'Time is up.' : '';
+    form.classList.toggle('cd-timer-idle', !state);
+    for (const area of protectedAreas) area.inert = !state || busy || state.paused || remaining === 0;
+    pause.textContent = !state ? 'Start or reopen test' : state.paused ? 'Resume' : 'Pause';
+    pause.disabled = busy || remaining === 0;
+    submit.disabled = busy || !state || Boolean(state.paused);
+    const message = !state ? 'The timer runs until you pause or submit.' : state.paused ? 'Test paused. Resume to continue.' : remaining === 0 ? 'Time is up.' : '';
     if (status.textContent !== message) status.textContent = message;
     submit.textContent = remaining === 0 ? 'Submit saved answers' : 'Submit assignment';
     if (remaining === 0 && !busy && !expiredSubmissionStarted) {
@@ -991,22 +1079,29 @@ function startReadingTimer(form, assignment, answerCount) {
     else clearInterval(interval);
   }, 250);
   draw();
-  api(endpoint + '/timer', { action: 'start' }).then(next => {
-    if (!active()) return;
-    useState(next);
-    next.answers.slice(0, answerCount).forEach((value, index) => {
-      const fields = [...form.querySelectorAll('[name=cd-answer-' + index + ']')];
-      for (const field of fields) {
-        if (field.type === 'radio') field.checked = field.value === value;
-        else field.value = value;
-      }
-    });
-    busy = false;
-    updateProgress();
+  confirmDialogClose = () => !busy && (!state || state.paused || window.confirm('The timer will keep running. To stop it, cancel and select Pause. Leave the test?'));
+  async function start() {
+    busy = true;
     draw();
-  }).catch(error => {
-    if (active()) showError(error, modal);
-  });
+    try {
+      const next = await api(endpoint + '/timer', { action: 'start' });
+      if (!active()) return;
+      useState(next);
+      next.answers.slice(0, answerCount).forEach((value, index) => {
+        const fields = [...form.querySelectorAll('[name=cd-answer-' + index + ']')];
+        for (const field of fields) {
+          if (field.type === 'radio') field.checked = field.value === value;
+          else field.value = value;
+        }
+      });
+      updateProgress();
+    } catch (error) {
+      if (active()) showError(error, modal);
+    } finally {
+      busy = false;
+      if (active()) draw();
+    }
+  }
 
   let saving = false;
   let queuedAnswers;
@@ -1030,7 +1125,8 @@ function startReadingTimer(form, assignment, answerCount) {
     })();
   });
   pause.onclick = async () => {
-    if (busy || !state) return;
+    if (busy) return;
+    if (!state) return start();
     const next = state.paused ? { action: 'resume' } : { action: 'pause', answers: answers() };
     busy = true;
     draw();
@@ -1045,7 +1141,7 @@ function startReadingTimer(form, assignment, answerCount) {
     }
   };
   bindForm(modal, async () => {
-    if (busy || !state || state.paused) return;
+    if (busy || !state || state.paused || !confirmAnswers(answers())) return;
     busy = true;
     draw();
     try {
@@ -1100,8 +1196,8 @@ function studentProgress(id) {
   const byAssignment = new Map(rows.map(row => [row.assignment, row]));
   const assignments = dashboard.assignments.map(a => {
     const row = byAssignment.get(a.id);
-    return '<tr><th scope="row">' + esc(a.title) + '</th><td>' + (row ? esc(score(row, a)) : 'Not submitted') +
-      '</td><td>' + (row ? link('/results/' + a.id + '/' + id, 'Open', 'light') : '—') + '</td></tr>';
+    return '<tr role="row"><th scope="row" role="rowheader">' + esc(a.title) + '</th><td role="cell">' + (row ? esc(score(row, a)) : 'Not submitted') +
+      '</td><td role="cell">' + (row ? link('/results/' + a.id + '/' + id, 'Open', 'light') : '—') + '</td></tr>';
   }).join('');
   openModal('Student progress', '<div class="teacher-progress-profile"><span class="avatar">' + initials(student.name) +
     '</span><div><strong>' + esc(student.name) + '</strong><p>' + rows.length + ' / ' + dashboard.assignments.length +
@@ -1122,7 +1218,9 @@ async function handleAction(event) {
         return;
       }
     }
-    navigate(anchor.pathname, { detail: Boolean(route.assignment || route.student || route.result) });
+    const detail = Boolean(route.assignment || route.student || route.result);
+    if (detail) detailTrigger = { path: anchor.pathname, from: location.pathname, skill: readRoute().skill };
+    navigate(anchor.pathname, { detail });
     return;
   }
   const key = event.target.closest('[data-action]')?.dataset.action;
@@ -1133,7 +1231,7 @@ async function handleAction(event) {
       dashboard = null;
       navigate('/login', { replace: true });
     }
-    if (key === 'close') modal.close();
+    if (key === 'close' && (!confirmDialogClose || confirmDialogClose())) modal.close();
     if (key === 'register') register();
     if (key === 'admin-create') editAssignment();
     if (key === 'admin-demo-student') await manageDemoStudent();
@@ -1159,8 +1257,13 @@ async function handleAction(event) {
 
 document.addEventListener('click', handleAction);
 window.addEventListener('popstate', showRoute);
+modal.addEventListener('cancel', event => {
+  if (confirmDialogClose && !confirmDialogClose()) event.preventDefault();
+});
 modal.addEventListener('close', () => {
-  if (modal.open || !user) return;
+  if (modal.open) return;
+  confirmDialogClose = undefined;
+  if (!user) return;
   const route = readRoute();
   if (!route.assignment && !route.student && !route.result) return;
   if (history.state?.detail) history.back();
@@ -1176,7 +1279,9 @@ try {
   }
 } catch (error) {
   if (readRoute().page !== 'landing') {
-    app.innerHTML = '<main class="content"><p class="error" role="alert"></p></main>';
-    showError(error);
+    app.innerHTML = '<main class="content"><section class="workspace-panel connection-error"><h1>Could not load Walker IELTS</h1>' +
+      '<p role="alert">Check your connection and try again.</p><button type="button" class="btn">Try again</button>' +
+      '<a href="/">Back to home</a></section></main>';
+    app.querySelector('button').onclick = () => location.reload();
   }
 }
