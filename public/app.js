@@ -341,7 +341,7 @@ function home() {
   const pending = dashboard.submissions.filter(s => s.raw === null && s.band === null);
   const activity = isTeacher ? pending : dashboard.submissions.filter(s => !pending.includes(s));
   const assignments = dashboard.assignments.slice(0, 4);
-  return '<section class="workspace-hero"><h1>' + (isTeacher ? 'Teacher workspace' : 'Student workspace') +
+  return '<section class="workspace-hero"><h1>' + (isTeacher ? 'Teacher dashboard' : 'Student workspace') +
     '</h1><p>' + (isTeacher ? 'Assign, monitor, and review IELTS work for your students.' :
       'Access your IELTS assignments, track submissions, and view your results.') + '</p>' +
     (isTeacher ? link('/admin', 'Manage assignments', 'accent', 'arrow') : link('/assignments', 'View assignments', 'accent', 'arrow')) +
@@ -360,7 +360,7 @@ function home() {
         (a.due && Number.isFinite(Date.parse(a.due)) ? assignmentDate.format(new Date(a.due)) : '—') + '</td><td>' +
         link('/assignments/' + a.id, 'Open', 'light') + '</td></tr>').join('') + '</tbody></table>' :
       empty('No assignments yet.')) +
-    '</section><section class="workspace-panel"><div class="workspace-panel-heading"><h2>' +
+    '</section><section class="workspace-panel workspace-activity"><div class="workspace-panel-heading"><h2>' +
     (isTeacher ? 'Review queue' : 'Recent results') + '</h2>' +
     (activity.length ? link('/results', 'View all', 'light', 'arrow') : '') + '</div>' +
     (activity.length ? activity.slice(0, 3).map(resultRow).join('') :
@@ -375,29 +375,112 @@ function home() {
     }).join('') + '</div></section></div>';
 }
 
-function tasks({ skill: filter = '' }) {
+function teacherHero(page, title, description, control = '') {
+  return '<section class="workspace-hero teacher-hero teacher-hero-' + page + '"><h1>' + title +
+    '</h1><p>' + description + '</p>' + control + '</section>';
+}
+
+function teacherTable(caption, headers, rows) {
+  return '<div class="teacher-table-wrap"><table class="workspace-table teacher-table"><caption class="workspace-visually-hidden">' +
+    caption + '</caption><thead><tr>' + headers.map(header => '<th scope="col">' + header + '</th>').join('') +
+    '<th scope="col"><span class="workspace-visually-hidden">Action</span></th></tr></thead><tbody>' + rows +
+    '</tbody></table></div>';
+}
+
+function teacherTasks(rows, filters, selected) {
+  const tableRows = rows.map(a => '<tr' + (a.id === selected ? ' class="teacher-selected"' : '') +
+    '><th scope="row"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) + esc(a.title) +
+    '</span></th><td>' + esc(a.kind) + '</td><td>' + esc(a.due || '—') + '</td><td>' +
+    link('/assignments/' + a.id, 'Open', 'light') + '</td></tr>').join('');
+  return teacherHero('assignments', 'Assignments', 'Browse and manage IELTS assignments for your students.',
+    link('/admin', 'Manage assignments', 'accent', 'arrow')) +
+    '<section class="stats teacher-assignment-stats" aria-label="Assignment overview">' +
+    stat('Assignments', dashboard.assignments.length, 'tasks', 'blue-soft') +
+    stat('Students', dashboard.students.length, 'students', 'blue-rich') +
+    stat('Submitted', dashboard.submissions.length, 'check', 'blue-soft') +
+    stat('Pending review', dashboard.submissions.filter(row => row.raw === null && row.band === null).length, 'clock', 'red-soft') +
+    '</section><section class="workspace-panel teacher-list"><h2>Teacher assignments</h2>' + filters +
+    (tableRows ? teacherTable('Assignments', ['Assignment', 'Skill', 'Due date'], tableRows) :
+      empty('No assignments for this skill.')) + '</section>';
+}
+
+function tasks({ skill: filter = '', assignment: selected }) {
   const rows = dashboard.assignments.filter(a => !filter || a.kind === filter);
-  return '<div class="headline"><div><h1>Assignments</h1><p class="subhead">IELTS homework by skill</p></div>' +
-    (teacher() ? link('/admin', 'Manage assignments', '', 'arrow') : '') + '</div><div class="filters" aria-label="Skills">' +
+  const filters = '<div class="filters" aria-label="Skills">' +
     ['', ...kinds].map(kind => '<a href="' + skillPath(kind) + '" data-route' +
-      (kind === filter ? ' class="active" aria-current="page"' : '') + '>' + (kind || 'All skills') + '</a>').join('') +
-    '</div><section class="panel">' + (rows.map(assignmentRow).join('') || empty('No assignments for this skill.')) + '</section>';
+      (kind === filter ? ' class="active" aria-current="page"' : '') + '>' + (kind || 'All skills') + '</a>').join('') + '</div>';
+  if (teacher()) return teacherTasks(rows, filters, selected);
+  return '<div class="headline"><div><h1>Assignments</h1><p class="subhead">IELTS homework by skill</p></div></div>' +
+    filters + '<section class="panel">' + (rows.map(assignmentRow).join('') || empty('No assignments for this skill.')) + '</section>';
 }
 
-function students() {
-  const list = dashboard.students.map(s => {
-    const submissions = dashboard.submissions.filter(row => row.student === s.id);
-    return '<div class="row"><div class="avatar">' + initials(s.name) + '</div><div class="grow"><strong>' + esc(s.name) + '</strong><small>' +
-      esc(s.email) + '</small></div><span class="pill">' + submissions.length + ' / ' + dashboard.assignments.length + ' submitted</span>' +
-      link('/students/' + s.id, 'Progress', 'light', 'next') + '</div>';
+function students({ student: selected }) {
+  const rows = dashboard.students.map(student => {
+    const submissions = dashboard.submissions.filter(row => row.student === student.id);
+    const needsReview = submissions.some(row => row.raw === null && row.band === null);
+    return '<tr data-needs-review="' + needsReview + '"' + (student.id === selected ? ' class="teacher-selected"' : '') +
+      '><th scope="row"><span class="workspace-assignment-name"><span class="avatar">' + initials(student.name) +
+      '</span><span>' + esc(student.name) + '<span class="teacher-student-email">' + esc(student.email) + '</span></span></span></th><td>' +
+      submissions.length + ' / ' + dashboard.assignments.length + '</td><td>' +
+      link('/students/' + student.id, 'Progress', 'light', 'next') + '</td></tr>';
   }).join('');
-  return '<div class="headline"><div><h1>Students</h1><p class="subhead">Accounts and progress</p></div>' +
-    action('add-student', 'Invite a student', '', 'plus') + '</div><section class="panel">' + (list || empty('No student accounts yet.')) + '</section>';
+  return teacherHero('students', 'Students', 'View your students and their assignment progress.',
+    action('add-student', 'Invite a student', 'accent', 'plus')) +
+    (rows ? '<div class="teacher-roster-filters" role="group" aria-label="Filter students"><button type="button" aria-pressed="true">Students</button>' +
+      '<button type="button" aria-pressed="false" data-pending>Pending review</button></div>' : '') +
+    '<section class="workspace-panel teacher-list"><h2>Student roster</h2>' +
+    (rows ? teacherTable('Student roster', ['Student', 'Submissions'], rows) +
+      '<p class="teacher-filter-empty" role="status" hidden>No students have submissions awaiting review.</p>' :
+      empty('No student accounts yet.')) + '</section>';
 }
 
-function results() {
-  return '<div class="headline"><div><h1>Results</h1><p class="subhead">Submissions, band scores, and feedback</p></div></div><section class="panel">' +
-    (dashboard.submissions.map(resultRow).join('') || empty('No submissions yet.')) + '</section>';
+function results({ result: selected }) {
+  if (!teacher()) return '<div class="headline"><div><h1>Results</h1><p class="subhead">Submissions, band scores, and feedback</p></div></div>' +
+    '<section class="panel">' + (dashboard.submissions.map(resultRow).join('') || empty('No submissions yet.')) + '</section>';
+  const assignments = new Map(dashboard.assignments.map(a => [a.id, a]));
+  const studentsById = new Map(dashboard.students.map(student => [student.id, student.name]));
+  const rows = dashboard.submissions.map(row => {
+    const a = assignments.get(row.assignment);
+    if (!a) return '';
+    const status = score(row, a);
+    const pending = status === 'Pending review';
+    return '<tr data-assignment="' + a.id + '" data-skill="' + esc(a.kind) + '" data-status="' +
+      (pending ? 'pending' : 'scored') + '"' +
+      (selected?.[0] === a.id && selected[1] === row.student ? ' class="teacher-selected"' : '') +
+      '><th scope="row"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) + '<span>' +
+      esc(a.title) + '<span class="teacher-student-email">' + esc(a.kind) + '</span></span></span></th><td>' +
+      esc(studentsById.get(row.student) || 'Student') + '</td><td>' + esc(row.submitted.slice(0, 10)) +
+      '</td><td><span class="pill' + (pending ? ' pending' : '') + '">' + esc(status) + '</span></td><td>' +
+      link('/results/' + a.id + '/' + row.student, a.questions ? 'Review answers' : 'Open', 'light') + '</td></tr>';
+  }).join('');
+  const filters = '<div class="teacher-result-filters"><label>Assignment<select name="assignment"><option value="">All assignments</option>' +
+    [...assignments.values()].map(a => '<option value="' + a.id + '">' + esc(a.title) + '</option>').join('') +
+    '</select></label><label>Skill<select name="skill"><option value="">All skills</option>' +
+    kinds.map(kind => '<option>' + kind + '</option>').join('') +
+    '</select></label><label>Result<select name="status"><option value="">All results</option><option value="pending">Pending review</option>' +
+    '<option value="scored">Scored</option></select></label><label>Search<input type="search" name="query" placeholder="Student or assignment"></label></div>';
+  return teacherHero('results', 'Results', 'Submissions, band scores, and feedback.') +
+    '<section class="workspace-panel teacher-list">' + (rows ? filters +
+      teacherTable('Results', ['Assignment', 'Student', 'Submitted', 'Result'], rows) +
+      '<p class="teacher-filter-empty" role="status" hidden>No results match these filters.</p>' : empty('No submissions yet.')) + '</section>';
+}
+
+function bindTeacherResultFilters() {
+  const filters = app.querySelector('.teacher-result-filters');
+  if (!filters) return;
+  const rows = [...app.querySelectorAll('.teacher-table tbody tr')];
+  filters.addEventListener('input', () => {
+    const fields = Object.fromEntries([...filters.querySelectorAll('input,select')].map(field => [field.name, field.value]));
+    const query = fields.query.trim().toLowerCase();
+    for (const row of rows) {
+      const { assignment, skill, status } = row.dataset;
+      const searchable = row.cells[0].textContent + ' ' + row.cells[1].textContent;
+      row.hidden = Boolean((fields.assignment && fields.assignment !== assignment) ||
+        (fields.skill && fields.skill !== skill) || (fields.status && fields.status !== status) ||
+        (query && !searchable.toLowerCase().includes(query)));
+    }
+    app.querySelector('.teacher-filter-empty').hidden = rows.some(row => !row.hidden);
+  });
 }
 
 function render(route) {
@@ -423,9 +506,20 @@ function render(route) {
     '</strong></div></header>';
   app.innerHTML = '<div class="shell workspace workspace-' + role.toLowerCase() + '">' +
     (teacher() ? teacherSidebar : studentHeader) + '<div class="workspace-body">' +
-    (page === 'home' ? '' : breadcrumb) + '<main class="content' + (page === 'home' ? ' workspace-dashboard' : '') +
+    (page === 'home' || (teacher() && !unavailable) ? '' : breadcrumb) + '<main class="content' + (page === 'home' || (teacher() && !unavailable) ? ' workspace-dashboard' : '') +
     '">' + view(route) + errorLine + '</main></div></div>';
   if (unavailable) return;
+  if (page === 'results' && teacher()) bindTeacherResultFilters();
+  const rosterFilters = app.querySelector('.teacher-roster-filters');
+  rosterFilters?.addEventListener('click', event => {
+    const selected = event.target.closest('button');
+    if (!selected) return;
+    const pendingOnly = selected.hasAttribute('data-pending');
+    for (const button of rosterFilters.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button === selected));
+    const rows = [...app.querySelectorAll('[data-needs-review]')];
+    for (const row of rows) row.hidden = pendingOnly && row.dataset.needsReview !== 'true';
+    app.querySelector('.teacher-filter-empty').hidden = rows.some(row => !row.hidden);
+  });
   if (route.assignment) {
     const assignment = dashboard.assignments.find(item => item.id === route.assignment);
     if (assignment) viewAssignment(assignment);
@@ -437,6 +531,9 @@ function render(route) {
 
 function openModal(title, contents, wide = false) {
   modal.classList.toggle('cd-dialog', wide);
+  const route = readRoute();
+  modal.classList.toggle('teacher-drawer', Boolean(user && teacher() && !wide &&
+    (route.assignment || route.student || route.result)));
   modal.innerHTML = '<div class="modal-inner"><div class="headline"><h2 id="modal-title">' + esc(title) +
     '</h2><button type="button" class="modal-close" data-action="close" aria-label="Close">' + icon('close', 18) + '</button></div>' + contents + '</div>';
   modal.setAttribute('aria-labelledby', 'modal-title');
@@ -983,7 +1080,7 @@ function viewResult(assignmentId, studentId) {
   const input = (label, name, value) => '<label>' + label + '<input type="number" min="0" max="9" step="0.5" required name="' + name + '" value="' + esc(value) + '"></label>';
   const review = a.questions ? '' : teacher() ? '<form>' +
     (a.kind === 'Writing' ? criteria.map((label, i) => input(label, 'c' + i, breakdown[i])).join('') : input('Speaking band', 'band', row.band)) +
-    '<label>Feedback<textarea name="feedback" maxlength="10000">' + esc(row.feedback) + '</textarea></label>' + submitButton('Save score') + '</form>' :
+    '<label>Feedback<textarea name="feedback" maxlength="10000">' + esc(row.feedback) + '</textarea></label>' + submitButton('Save review') + '</form>' :
     (breakdown.length ? '<ul>' + criteria.map((label, i) => '<li>' + label + ' · ' + breakdown[i] + '</li>').join('') + '</ul>' : '') +
     (row.feedback ? '<div class="prompt">' + esc(row.feedback) + '</div>' : '');
   openModal(a.title, '<p class="subhead">' + esc(student?.name || a.kind) + '</p><div class="notice">' + esc(score(row, a)) + (a.questions && row.band !== null ? ' · ' + row.raw + ' / ' + a.questions : '') + '</div>' + passage + answer + review);
@@ -1000,13 +1097,16 @@ function studentProgress(id) {
   const student = dashboard.students.find(item => item.id === id);
   if (!student) return openModal('Student not found', '');
   const rows = dashboard.submissions.filter(item => item.student === id);
-  const sections = kinds.map(kind => {
-    const assignments = dashboard.assignments.filter(a => a.kind === kind);
-    const submitted = rows.filter(row => assignments.some(a => a.id === row.assignment));
-    return '<div class="row">' + tile(kind.toLowerCase()) + '<div class="grow"><strong>' + kind + '</strong></div><span class="pill">' + submitted.length + ' / ' + assignments.length + '</span></div>';
+  const byAssignment = new Map(rows.map(row => [row.assignment, row]));
+  const assignments = dashboard.assignments.map(a => {
+    const row = byAssignment.get(a.id);
+    return '<tr><th scope="row">' + esc(a.title) + '</th><td>' + (row ? esc(score(row, a)) : 'Not submitted') +
+      '</td><td>' + (row ? link('/results/' + a.id + '/' + id, 'Open', 'light') : '—') + '</td></tr>';
   }).join('');
-  openModal(student.name, '<div class="panel">' + sections + '</div><div class="headline notice"><h2>Results</h2></div><div class="panel">' +
-    (rows.map(resultRow).join('') || empty('No submissions yet.')) + '</div>');
+  openModal('Student progress', '<div class="teacher-progress-profile"><span class="avatar">' + initials(student.name) +
+    '</span><div><strong>' + esc(student.name) + '</strong><p>' + rows.length + ' / ' + dashboard.assignments.length +
+    ' submissions</p></div></div><h3>Assignments</h3>' +
+    (assignments ? teacherTable('Student assignments', ['Assignment', 'Result'], assignments) : empty('No assignments yet.')));
 }
 
 async function handleAction(event) {
