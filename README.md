@@ -59,7 +59,9 @@ Testlarni faqat admin qo‘shishi, tahrirlashi va o‘chirishi mumkin. Ustoz avv
 
 ## CD Reading testlarini import qilish
 
-`/admin` → **Import CD Reading** orqali Walker CD JSON paketini yuklang. Testni tanlab **Review test** tugmasini bosing, uchta passage, savollar, variantlar va javob kalitini ko‘rib chiqing va **Publish assignment** ni bosing. Fayl admin uchun mo‘ljallangan va javob kalitlarini o‘z ichiga oladi. Testlar bittadan e’lon qilinadi. O‘quvchilar testni Reading bo‘limidan ochib, passage va savollar orasida o‘tadi va topshirgach savolma-savol natijani ko‘radi.
+`/admin` → **Admin tools → Import CD Reading** oynasida IELTS Reading PDF’ni tanlang. Sayt PDF’ni brauzerda o‘qib, topilgan testlarni ro‘yxatga chiqaradi. **Review test** orqali passage, savollar, variantlar va javob kalitini asl hujjat bilan solishtiring. Yetishmayotgan javoblarni kiriting, tekshiruvni tasdiqlang va **Publish assignment** ni bosing. Shu PDF’dan boshqa testlarni faylni qayta yuklamasdan tanlash mumkin.
+
+PDF fayl brauzerda qoladi. Serverga faqat nashr qilinayotgan test yuboriladi. Import matni belgilanadigan 30 MB va 250 sahifagacha bo‘lgan PDF’lar uchun. Skanerlangan PDF uchun avval OCR kerak. Boshqa formatdagi kitoblarda aniq Passage 1–3 va Questions sarlavhalari kerak. PDF’da kalit topilmasa, nashrdan oldin kalitni qo‘lda to‘ldiring. O‘quvchilar testni Reading bo‘limida ochadi va topshirgach savolma-savol natijani ko‘radi.
 
 ## Vazifalar va baholash
 

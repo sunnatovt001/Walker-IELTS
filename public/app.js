@@ -736,51 +736,90 @@ function editAssignment(existing) {
 }
 
 function importCdReading() {
-  let readingPack = [];
-  openModal('Import CD Reading', '<form><label>Reading pack JSON<input type="file" name="pack" accept=".json,application/json"></label>' +
-    '<label>Test<select name="test" aria-label="Test" required></select></label>' + submitButton('Review test') + '</form>');
-  const input = modal.querySelector('[name=pack]');
-  const picker = modal.querySelector('[name=test]');
-  const review = modal.querySelector('[type=submit]');
-  const alert = modal.querySelector('[role=alert]');
-  function listTests() {
-    review.disabled = picker.disabled = !readingPack.length;
-    picker.innerHTML = readingPack.length ? readingPack.map((test, index) =>
-      '<option value="' + index + '">' + esc(test.title) + '</option>').join('') : '<option value="">Select a reading pack</option>';
-  }
-  listTests();
-  input.onchange = async () => {
-    readingPack = [];
-    listTests();
-    alert.textContent = '';
-    const selected = input.files[0];
-    if (!selected) return;
-    try {
-      const file = selected;
-      if (!file || file.size > 2 * 1024 * 1024) throw new Error('Select a reading pack under 2 MB.');
-      const pack = JSON.parse(await file.text());
-      if (!input.isConnected || !modal.open || input.files[0] !== file) return;
-      if (pack.format !== 'walker-reading-cd-v1' || !Array.isArray(pack.tests) || !pack.tests.length ||
-          pack.tests.some(test => !test || typeof test.title !== 'string' || !Array.isArray(test.sections) ||
-            !Array.isArray(test.keys) || test.sections.some(section => !section || !Array.isArray(section.groups) || section.groups.some(group => !group || !Array.isArray(group.numbers))))) {
-        throw new Error('Select a valid Walker IELTS CD reading pack.');
-      }
-      readingPack = pack.tests;
-      modal.querySelector('[role=alert]').textContent = '';
-    } catch (error) {
-      if (!input.isConnected || !modal.open || input.files[0] !== selected) return;
-      alert.textContent = error.message;
+  let tests = [];
+  let filename = '';
+  let selectedIndex = 0;
+  let readRequest;
+  const published = new Set();
+  const progress = document.createElement('p');
+  progress.className = 'help';
+  progress.setAttribute('role', 'status');
+
+  function showPicker(message = '') {
+    openModal('Import CD Reading', '<form><label>' + (tests.length ? 'Replace Reading PDF' : 'Reading PDF') + '<input type="file" name="pdf" accept=".pdf,application/pdf" aria-describedby="pdf-import-help"></label>' +
+      '<p class="help" id="pdf-import-help">Choose an IELTS Reading PDF with selectable text, up to 30 MB. Select a detected test and check the answers before publishing.</p>' +
+      '<label>Test<select name="test" aria-label="Test" required></select></label>' + submitButton('Review test') + '</form>');
+    const input = modal.querySelector('[name=pdf]');
+    const picker = modal.querySelector('[name=test]');
+    const review = modal.querySelector('[type=submit]');
+    const alert = modal.querySelector('[role=alert]');
+    input.closest('label').after(progress);
+    progress.textContent = message || (tests.length ? tests.length + ' tests found in ' + filename + '.' : '');
+
+    function listTests() {
+      review.disabled = picker.disabled = !tests.length;
+      picker.innerHTML = tests.length ? tests.map((test, index) =>
+        '<option value="' + index + '"' + (published.has(index) ? ' disabled' : '') + '>' + esc(test.title) +
+        (published.has(index) ? ' (published)' : '') + '</option>').join('') :
+        '<option value="">Choose a Reading PDF first</option>';
+      if (tests.length) picker.value = String(selectedIndex);
     }
     listTests();
-  };
-  bindForm(modal, values => {
-    const test = readingPack[Number(values.get('test'))];
-    if (!test) return;
-    editCdReading({ ...test, cd: test.sections });
-  });
+    input.onchange = async () => {
+      readRequest?.abort();
+      const request = new AbortController();
+      readRequest = request;
+      tests = [];
+      selectedIndex = 0;
+      published.clear();
+      listTests();
+      alert.textContent = '';
+      const file = input.files[0];
+      progress.textContent = '';
+      if (!file) return;
+      filename = file.name;
+      progress.textContent = 'Opening PDF…';
+      try {
+        const { extractReadingTests } = await import('./reading-pdf.js');
+        const extracted = await extractReadingTests(file, (page, total) => {
+          if (!request.signal.aborted && input.isConnected && modal.open) progress.textContent = 'Reading pages ' + page + ' / ' + total + '…';
+        }, request.signal);
+        if (request.signal.aborted || !input.isConnected || !modal.open) return;
+        tests = extracted;
+        progress.textContent = tests.length + (tests.length === 1 ? ' test found in ' : ' tests found in ') + filename + '.';
+        listTests();
+      } catch (error) {
+        if (request.signal.aborted || !input.isConnected || !modal.open) return;
+        progress.textContent = '';
+        alert.textContent = error.name === 'PasswordException' ? 'Unlock the PDF and upload it again.' : error.message;
+      }
+    };
+    bindForm(modal, values => {
+      selectedIndex = Number(values.get('test'));
+      const test = tests[selectedIndex];
+      if (!test || published.has(selectedIndex)) return;
+      editCdReading({ ...test, cd: test.sections }, showPicker, async () => {
+        published.add(selectedIndex);
+        try {
+          await showAdminAssignments('Assignment published.');
+        } catch (error) {
+          showError(error, app);
+        }
+        if (readRoute().page !== 'admin' || !modal.open) return;
+        const remaining = tests.findIndex((_, index) => !published.has(index));
+        if (remaining !== -1) {
+          selectedIndex = remaining;
+          showPicker('Assignment published. Choose another test from ' + filename + ', or close this window.');
+        } else modal.close();
+      });
+    });
+  }
+
+  showPicker();
+  modal.addEventListener('close', () => readRequest?.abort(), { once: true });
 }
 
-function editCdReading(test) {
+function editCdReading(test, backToTests, onPublish) {
   const locked = Boolean(test.submissionCount);
   const notes = Array.isArray(test.review) ? test.review : [];
   let answerIndex = 0;
@@ -801,11 +840,17 @@ function editCdReading(test) {
     esc(test.title) + '"></label><label>Due date<input name="due" type="date" value="' + esc(test.due) + '"></label>' +
     (notes.length ? '<div class="notice"><strong>Check the source before publishing</strong><ul>' + notes.map(note => '<li>' + esc(note) + '</li>').join('') + '</ul></div>' : '') +
     details + (!test.id ? '<label class="cd-confirm"><input type="checkbox" required> I have reviewed the passages, questions, and answer key.</label>' : '') +
-    submitButton(test.id ? 'Save changes' : 'Publish assignment') + '</form>', true);
+    submitButton(test.id ? 'Save changes' : 'Publish assignment') + '</form>' +
+    (backToTests ? '<button type="button" class="btn light cd-back-to-tests">Back to PDF tests</button>' : ''), true);
   modal.classList.add('admin-cd-editor');
+  const back = modal.querySelector('.cd-back-to-tests');
+  if (back) back.onclick = () => {
+    if (!confirmDialogClose || confirmDialogClose()) backToTests();
+  };
   let dirty = false;
+  let saving = false;
   modal.querySelector('form').addEventListener('input', () => { dirty = true; });
-  confirmDialogClose = () => !dirty || window.confirm('Discard unsaved changes to this test?');
+  confirmDialogClose = () => !saving && (!dirty || window.confirm('Discard unsaved changes to this test?'));
   // Open a collapsed section if one of its required fields fails browser validation.
   modal.querySelector('form').addEventListener('invalid', event => {
     const section = event.target.closest('details');
@@ -821,10 +866,20 @@ function editCdReading(test) {
       })
     }));
     const keys = test.keys.map((_, index) => values.get('key-' + index)).join('\n');
-    await api(test.id ? 'admin/assignments/' + test.id + '/edit' : 'admin/assignments',
-      { kind: 'Reading', title: values.get('title'), due: values.get('due'), keys, cd });
-    modal.close();
-    await showAdminAssignments(test.id ? 'Assignment updated.' : 'Assignment published.');
+    saving = true;
+    if (back) back.disabled = true;
+    try {
+      await api(test.id ? 'admin/assignments/' + test.id + '/edit' : 'admin/assignments',
+        { kind: 'Reading', title: values.get('title'), due: values.get('due'), keys, cd });
+      if (onPublish) await onPublish();
+      else {
+        modal.close();
+        await showAdminAssignments(test.id ? 'Assignment updated.' : 'Assignment published.');
+      }
+    } finally {
+      saving = false;
+      if (back) back.disabled = false;
+    }
   });
 }
 
