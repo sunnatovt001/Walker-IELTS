@@ -337,3 +337,82 @@ div.cd-test{display:grid}
 .cd-timer strong{font-variant-numeric:tabular-nums;margin-left:5px;font-size:17px}
 .cd-timer .help{font-weight:500}
 .cd-timer-paused .cd-part{visibility:hidden;max-height:120px;overflow:hidden}
+
+.workspace{background:#f8f6f2}
+.workspace-body{min-width:0}
+.workspace-teacher .sidebar{background:#081e32}
+.workspace-teacher .sidebar .brand{margin-bottom:18px}
+.workspace-teacher .sidebar .nav a.active{background:#1b344d;box-shadow:inset 4px 0 var(--accent)}
+.workspace-role{display:inline-flex;align-items:center;gap:7px;align-self:flex-start;width:max-content;padding:6px 12px;border-radius:24px;background:#153d65;color:white;font-size:12px;font-weight:700}
+.workspace-student{display:block;background:#edf5fa}
+.student-header{display:flex;align-items:center;gap:20px;padding:10px clamp(16px,4vw,56px);background:white;border-bottom:1px solid var(--line)}
+.student-brand{display:flex;align-items:center;gap:12px}
+.student-brand .brand{width:128px;background:#081e32;padding:4px 7px;border-radius:8px}
+.student-brand .workspace-role{align-self:center}
+.student-header .nav{display:flex;margin-left:auto}
+.student-header .nav a{color:var(--ink);width:auto;white-space:nowrap}
+.student-header .nav a:hover,.student-header .logout:hover{background:#eaf2fa}
+.student-header .nav a.active{background:#f0f6fb;box-shadow:inset 0 -3px var(--accent)}
+.student-header .logout{color:var(--ink);margin-left:0}
+.workspace-dashboard{padding-top:22px}
+.workspace-hero{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  gap:13px;
+  min-height:260px;
+  padding:clamp(24px,4vw,56px);
+  border-radius:17px;
+  background:linear-gradient(90deg,#071629 4%,#071629c9 32%,transparent 77%),url("/teacher-desk.webp") center/cover;
+  color:white;
+}
+.workspace-student .workspace-hero{
+  background:linear-gradient(90deg,#dbedfc 4%,#dbedfce3 32%,transparent 77%),url("/student-desk.webp") center/cover;
+  color:#0c2542;
+}
+.workspace-hero h1{font-size:clamp(26px,3.4vw,48px);line-height:1.08;letter-spacing:-.055em}
+.workspace-hero p{max-width:35ch;line-height:1.45}
+.workspace-hero .btn{margin-top:6px}
+.workspace-stats{margin:16px 0}
+.workspace-grid{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(220px,1fr);gap:16px;align-items:start}
+.workspace-column{display:grid;gap:16px;min-width:0}
+.workspace-panel{background:#fff;border:1px solid #d7e3ee;border-radius:14px;padding:16px;min-width:0}
+.workspace-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.workspace-panel h2{font-size:clamp(17px,1.75vw,23px);letter-spacing:-.035em}
+.workspace-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;text-align:left}
+.workspace-table th,.workspace-table td{padding:9px 8px;border-bottom:1px solid #e7eef5}
+.workspace-table thead th{background:#e9f2fa}
+.workspace-table thead th:first-child{border-radius:7px 0 0 7px}
+.workspace-table thead th:last-child{border-radius:0 7px 7px 0}
+.workspace-table td:last-child{text-align:right}
+.workspace-assignment-name{display:flex;align-items:center;gap:8px;overflow-wrap:anywhere}
+.workspace-assignment-name small{display:none;color:var(--muted);font-weight:500}
+.workspace-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.workspace-empty{display:flex;align-items:center;justify-content:center;gap:13px;padding:20px 14px;border-radius:10px;background:#edf5fc}
+.workspace-teacher .workspace-empty{flex-direction:column;text-align:center;background:#f8f9fb}
+.workspace-empty p{margin-top:4px;color:var(--muted);font-size:13px}
+.workspace-skills{display:grid;gap:8px}
+.workspace-skills a{display:flex;align-items:center;gap:10px;padding:9px;border:1px solid var(--line);border-radius:9px;color:var(--ink);text-decoration:none}
+.workspace-skills a:hover{border-color:#9abbd9;background:#f4f8fc}
+.workspace-skills a > span{flex:1}
+.workspace-skills small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+@media(max-width:1100px){
+  .workspace-table :is(th,td):nth-child(2),.workspace-table :is(th,td):nth-child(3){display:none}
+  .workspace-assignment-name small{display:block}
+}
+@media(max-width:900px){
+  .workspace-grid{grid-template-columns:1fr}
+}
+@media(max-width:700px){
+  .workspace-teacher .sidebar .brand{width:124px;margin:0}
+  .workspace-teacher .sidebar .workspace-role{position:absolute;top:18px;right:46px}
+  .student-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:10px 12px}
+  .student-header .nav{grid-column:1/-1;grid-row:2;margin:0}
+  .student-header .logout{grid-column:2;grid-row:1}
+  .workspace-dashboard{padding-top:12px}
+  .workspace-hero{min-height:210px;background-position:55% center}
+  .workspace-student .workspace-hero{background-position:44% center}
+  .workspace-stats{margin:10px 0}
+  .workspace-panel{padding:12px}
+}

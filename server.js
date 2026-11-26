@@ -190,6 +190,8 @@ const publicFiles = {
   '/landing-leather.webp': ['landing-leather.webp', 'image/webp'],
   '/landing-desk-mobile.webp': ['landing-desk-mobile.webp', 'image/webp'],
   '/login-desk.webp': ['login-desk.webp', 'image/webp'],
+  '/teacher-desk.webp': ['teacher-desk.webp', 'image/webp'],
+  '/student-desk.webp': ['student-desk.webp', 'image/webp'],
   '/assignment-paper.webp': ['assignment-paper.webp', 'image/webp'],
   '/notebook-paper.webp': ['notebook-paper.webp', 'image/webp']
 };

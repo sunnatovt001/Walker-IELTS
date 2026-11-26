@@ -332,25 +332,47 @@ function resultRow(row) {
     link('/results/' + row.assignment + '/' + row.student, assignment.cd ? 'Review answers' : 'Open', 'light', 'next') + '</div>';
 }
 
+const assignmentDate = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'
+});
+
 function home() {
-  const counts = {
-    pending: dashboard.submissions.filter(s => s.raw === null && s.band === null).length,
-    done: dashboard.submissions.length
-  };
-  return '<section class="hero"><div class="hero-art" aria-hidden="true">IELTS</div><div class="eyebrow"><span class="dot"></span>' +
-    (teacher() ? 'Teacher workspace' : 'Student workspace') + '</div><h1>Hello, ' + esc(user.name) +
-    '!</h1><p>' + (teacher() ? 'Assign homework, review submissions, and track student progress.' : 'Complete your IELTS assignments and track your results.') +
-    '</p>' + (teacher() ? link('/admin', 'Manage assignments', 'accent', 'arrow') : link('/assignments', 'View assignments', 'accent', 'arrow')) + '</section>' +
-    '<section class="stats" aria-label="Overview">' + stat('Total assignments', dashboard.assignments.length, 'tasks', 'blue-soft') +
-    (teacher() ? stat('Students', dashboard.students.length, 'students', 'blue-rich') : stat('Submitted', counts.done, 'check', 'blue-rich')) +
-    stat('Pending review', counts.pending, 'clock', 'red-soft') + '</section>' +
-    '<div class="headline"><h2>IELTS skills</h2></div><section class="tiles">' + kinds.map(kind => {
+  const isTeacher = teacher();
+  const pending = dashboard.submissions.filter(s => s.raw === null && s.band === null);
+  const activity = isTeacher ? pending : dashboard.submissions.filter(s => !pending.includes(s));
+  const assignments = dashboard.assignments.slice(0, 4);
+  return '<section class="workspace-hero"><h1>' + (isTeacher ? 'Teacher workspace' : 'Student workspace') +
+    '</h1><p>' + (isTeacher ? 'Assign, monitor, and review IELTS work for your students.' :
+      'Access your IELTS assignments, track submissions, and view your results.') + '</p>' +
+    (isTeacher ? link('/admin', 'Manage assignments', 'accent', 'arrow') : link('/assignments', 'View assignments', 'accent', 'arrow')) +
+    '</section><section class="stats workspace-stats" aria-label="Overview">' +
+    stat('Assignments', dashboard.assignments.length, 'tasks', 'blue-soft') +
+    (isTeacher ? stat('Students', dashboard.students.length, 'students', 'blue-rich') :
+      stat('Submitted', dashboard.submissions.length, 'check', 'blue-rich')) +
+    stat('Pending review', pending.length, 'clock', 'red-soft') + '</section>' +
+    '<div class="workspace-grid"><div class="workspace-column"><section class="workspace-panel"><div class="workspace-panel-heading"><h2>' +
+    (isTeacher ? 'Recent assignments' : 'My assignments') + '</h2>' + link('/assignments', 'View all', 'light', 'arrow') + '</div>' +
+    (assignments.length ? '<table class="workspace-table"><thead><tr><th scope="col">Assignment</th><th scope="col">Skill</th>' +
+      '<th scope="col">Due date</th><th scope="col"><span class="workspace-visually-hidden">Action</span></th></tr></thead><tbody>' +
+      assignments.map(a => '<tr><th scope="row"><span class="workspace-assignment-name">' + tile(a.kind.toLowerCase()) +
+        '<span>' + esc(a.title) + '<small>' + esc(a.kind + (a.due ? ' · ' + a.due : '')) + '</small></span></span></th><td>' +
+        esc(a.kind) + '</td><td>' +
+        (a.due && Number.isFinite(Date.parse(a.due)) ? assignmentDate.format(new Date(a.due)) : '—') + '</td><td>' +
+        link('/assignments/' + a.id, 'Open', 'light') + '</td></tr>').join('') + '</tbody></table>' :
+      empty('No assignments yet.')) +
+    '</section><section class="workspace-panel"><div class="workspace-panel-heading"><h2>' +
+    (isTeacher ? 'Review queue' : 'Recent results') + '</h2>' +
+    (activity.length ? link('/results', 'View all', 'light', 'arrow') : '') + '</div>' +
+    (activity.length ? activity.slice(0, 3).map(resultRow).join('') :
+      '<div class="workspace-empty">' + tile(isTeacher ? 'clock' : 'results', isTeacher ? 'red-soft' : 'blue-soft') +
+      '<div><strong>' + (isTeacher ? 'You’re all caught up' : 'No results yet') + '</strong><p>' +
+      (isTeacher ? 'No submissions to review.' : 'Your results will appear here after your assignments are scored.') +
+      '</p></div></div>') + '</section></div>' +
+    '<section class="workspace-panel"><div class="workspace-panel-heading"><h2>IELTS skills</h2></div><div class="workspace-skills">' + kinds.map(kind => {
       const count = dashboard.assignments.filter(a => a.kind === kind).length;
-      return '<a class="skill" href="' + skillPath(kind) + '" data-route><span class="skill-title">' + tile(kind.toLowerCase()) + icon('arrow', 16) +
-        '</span><strong>' + kind + '</strong><small>' + count + (count === 1 ? ' assignment' : ' assignments') + '</small></a>';
-    }).join('') +
-    '</section><div class="headline"><h2>Recent assignments</h2>' + link('/assignments', 'View all', 'light', 'arrow') + '</div><section class="panel">' +
-    (dashboard.assignments.slice(0, 4).map(assignmentRow).join('') || empty('No assignments yet.')) + '</section>';
+      return '<a href="' + skillPath(kind) + '" data-route>' + tile(kind.toLowerCase()) + '<span><strong>' +
+        kind + '</strong><small>' + count + (count === 1 ? ' assignment' : ' assignments') + '</small></span>' + icon('arrow', 16) + '</a>';
+    }).join('') + '</div></section></div>';
 }
 
 function tasks({ skill: filter = '' }) {
@@ -387,13 +409,22 @@ function render(route) {
   const view = unavailable ? () => '<div class="headline"><h1>Page not found</h1></div>' + link(pathsByPage.home, 'Back to dashboard')
     : { home, tasks, students, results }[page];
   document.title = title + ' | Walker IELTS';
-  app.innerHTML = '<div class="shell"><aside class="sidebar">' + brand + '<div class="label">WORKSPACE</div><nav class="nav" aria-label="Workspace">' +
-    navigation.map(item => '<a href="' + pathsByPage[item] + '" data-route class="' + (item === page ? 'active' : '') + '"' +
-      (item === page ? ' aria-current="page"' : '') + '>' + icon(item) + labels[item] + '</a>').join('') +
-    '</nav><div class="sidebar-bottom"><div class="profile"><div class="avatar">' + initials(user.name) + '</div><div><strong>' + esc(user.name) +
-    '</strong><small>' + role + '</small></div><button class="logout" aria-label="Sign out" title="Sign out" data-action="logout">' + icon('logout') +
-    '</button></div></div></aside><div><header class="top"><div class="crumb">Workspace ' + icon('next', 13) + '<strong>' + title +
-    '</strong></div><span class="top-role">' + role + ' workspace</span></header><main class="content">' + view(route) + errorLine + '</main></div></div>';
+  const nav = '<nav class="nav" aria-label="Workspace">' + navigation.map(item =>
+    '<a href="' + pathsByPage[item] + '" data-route class="' + (item === page ? 'active' : '') + '"' +
+    (item === page ? ' aria-current="page"' : '') + '>' + icon(item) + labels[item] + '</a>').join('') + '</nav>';
+  const signOut = '<button class="logout" aria-label="Sign out" title="Sign out" data-action="logout">' + icon('logout') + '</button>';
+  const roleBadge = '<span class="workspace-role">' + icon('students', 16) + role + '</span>';
+  const teacherSidebar = '<aside class="sidebar">' + brand + roleBadge + '<div class="label">WORKSPACE</div>' + nav +
+    '<div class="sidebar-bottom"><div class="profile"><div class="avatar">' + initials(user.name) +
+    '</div><div><strong>' + esc(user.name) + '</strong><small>Teacher</small></div>' + signOut + '</div></div></aside>';
+  const studentHeader = '<header class="student-header"><div class="student-brand">' + brand + roleBadge +
+    '</div>' + nav + signOut + '</header>';
+  const breadcrumb = '<header class="top"><div class="crumb">Workspace ' + icon('next', 13) + '<strong>' + title +
+    '</strong></div></header>';
+  app.innerHTML = '<div class="shell workspace workspace-' + role.toLowerCase() + '">' +
+    (teacher() ? teacherSidebar : studentHeader) + '<div class="workspace-body">' +
+    (page === 'home' ? '' : breadcrumb) + '<main class="content' + (page === 'home' ? ' workspace-dashboard' : '') +
+    '">' + view(route) + errorLine + '</main></div></div>';
   if (unavailable) return;
   if (route.assignment) {
     const assignment = dashboard.assignments.find(item => item.id === route.assignment);
