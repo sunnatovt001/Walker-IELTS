@@ -30,6 +30,7 @@ let previousWorkspacePage;
 let resultFilters = {};
 let rosterPending = false;
 let confirmDialogClose;
+let closeReadingTools;
 const pathsByPage = { home: '/dashboard', tasks: '/assignments', students: '/students', results: '/results' };
 const skillPath = kind => pathsByPage.tasks + (kind ? '/' + kind.toLowerCase() : '');
 
@@ -574,7 +575,9 @@ function render(route) {
 
 function openModal(title, contents, wide = false) {
   confirmDialogClose = undefined;
-  modal.classList.remove('admin-cd-editor', 'invite-dialog');
+  closeReadingTools?.();
+  closeReadingTools = undefined;
+  modal.classList.remove('admin-cd-editor', 'invite-dialog', 'cd-exam');
   modal.classList.toggle('cd-dialog', wide);
   const route = readRoute();
   modal.classList.toggle('teacher-drawer', Boolean(user && teacher() && !wide &&
@@ -1020,96 +1023,205 @@ function renderCdGroup(group, offset, checks) {
   const prompt = (text, className) => text.trim() ? '<div class="' + className + '">' + esc(text.trim()) + '</div>' : '';
   const rows = matches.map(({ match, number, index }, i) => {
     const body = group.text.slice(match.index + match[0].length, matches[i + 1]?.match.index);
-    return '<div class="cd-question-row"><span class="cd-question-number">' + number + '</span><div>' +
+    return '<div class="cd-question-row" tabindex="-1" data-question="' + number + '"><span class="cd-question-number">' + number + '</span><div>' +
       (match[2] ? '<span class="cd-blank">Blank ' + number + '</span>' : prompt(body, 'cd-question-text')) +
       answer(number, index) + (match[2] ? prompt(body, 'cd-question-text cd-continuation') : '') + '</div></div>';
   });
   const remaining = group.numbers.flatMap((number, index) => matches.some(item => item.index === index) ? [] :
-    ['<div class="cd-question-row"><span class="cd-question-number">' + number + '</span><div>' +
+    ['<div class="cd-question-row" tabindex="-1" data-question="' + number + '"><span class="cd-question-number">' + number + '</span><div>' +
       answer(number, index) + '</div></div>']);
   return '<div class="cd-question-group">' +
     prompt(group.text.slice(0, matches.length ? matches[0].match.index : group.text.length), 'cd-group-instructions') +
     rows.join('') + remaining.join('') + '</div>';
 }
 
-function openCdReading(assignment, result) {
-  const checks = result ? new Map((result.checks || []).map(check => [check.number, check])) : null;
-  const summary = result ? '<div class="notice cd-score" role="status"><strong>Submitted score</strong><span>' +
-    esc(score(result, assignment)) + (result.band === null ? '' : ' · ' + result.raw + ' / ' + assignment.questions) +
-    '</span><span class="help">Read any passage again and compare your answers.</span></div>' : '';
-  const tabs = assignment.cd.map((_, index) => '<button type="button" class="btn light" data-cd-part="' + index +
-    '">Passage ' + (index + 1) + '</button>').join('');
-  let answerCount = 0;
-  const sections = assignment.cd.map((section, index) => '<section class="cd-part" ' + (index ? 'hidden' : '') + '>' +
-    '<div class="cd-passage" tabindex="0" aria-label="Reading passage"><h3>' + esc(section.title) +
-    '</h3><div class="cd-passage-copy">' + esc(section.passage) + '</div></div>' +
-    '<div class="cd-questions" tabindex="0" aria-label="Questions">' + section.groups.map(group => {
-      const markup = renderCdGroup(group, answerCount, checks);
-      answerCount += group.numbers.length;
-      return markup;
-    }).join('') + '</div></section>').join('');
-  const tag = result ? 'div' : 'form';
-  const timer = result ? '' : '<div class="cd-timer"><span>Time remaining <strong data-reading-time>60:00</strong></span>' +
-    '<button type="button" class="btn light" data-reading-pause>Start or reopen test</button><span class="help" data-reading-status role="status">The timer runs until you pause or submit.</span></div>';
-  const jump = '<nav class="cd-jump" aria-label="Jump within passage">' +
-    '<button type="button" class="btn light" data-cd-jump="passage">Read passage</button>' +
-    '<button type="button" class="btn light" data-cd-jump="questions">Go to questions</button></nav>';
-  openModal(assignment.title, '<' + tag + ' class="cd-test">' + summary +
-    '<div class="cd-toolbar">' + timer + jump + '</div><div class="cd-tools">' +
-    '<a class="cd-telegram" href="https://t.me/walker_ielts" target="_blank" rel="noopener">' + providerIcons.telegram + 'Walker IELTS on Telegram</a>' +
-    '<div class="cd-utility"><label>Text size<select name="text-size"><option value="standard">Standard</option><option value="large">Large</option></select></label>' +
-    '<button type="button" class="btn light" data-highlight>Highlight selection</button><button type="button" class="btn light" data-clear-highlight>Clear highlights</button></div></div>' +
-    '<nav class="cd-tabs" aria-label="Passages">' + tabs + '</nav>' + sections +
-    (result ? '' : '<div class="cd-submit"><span class="cd-progress" role="status">0 / ' + answerCount + ' answered</span>' +
-      submitButton('Submit assignment') + '</div>') + '</' + tag + '>', true);
-  const form = modal.querySelector('.cd-test');
-  const panels = [...modal.querySelectorAll('.cd-part')];
-  const tabButtons = [...modal.querySelectorAll('.cd-tabs button')];
-  function select(part) {
-    panels.forEach((panel, index) => { panel.hidden = index !== part; });
-    tabButtons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === part)));
-  }
-  select(0);
-  const toolbar = form.querySelector('.cd-toolbar');
-  for (const button of toolbar.querySelectorAll('[data-cd-jump]')) {
-    button.onclick = () => {
-      const target = form.querySelector('.cd-part:not([hidden]) .cd-' + button.dataset.cdJump);
-      const offset = toolbar.offsetHeight + 8;
-      target.focus({ preventScroll: true });
-      modal.scrollTo({ top: modal.scrollTop + target.getBoundingClientRect().top - modal.getBoundingClientRect().top - offset });
-    };
-  }
-  for (const button of tabButtons) button.onclick = () => select(Number(button.dataset.cdPart));
-  form.querySelector('[name=text-size]').onchange = event => form.classList.toggle('cd-large', event.target.value === 'large');
-  const highlight = form.querySelector('[data-highlight]');
-  highlight.onmousedown = event => event.preventDefault();
-  highlight.onclick = () => {
+const readingHighlights = ['Yellow', 'Light blue', 'Green', 'Red', 'Pink'];
+
+function bindReadingHighlights(form) {
+  const palette = form.querySelector('.cd-highlight-palette');
+  let selectedRange;
+  const events = new AbortController();
+  const options = { signal: events.signal };
+  const hide = () => {
+    palette.hidden = true;
+    selectedRange = undefined;
+  };
+  function show() {
+    if (!modal.open || form.matches('.cd-timer-idle,.cd-timer-paused') || palette.contains(document.activeElement)) return;
     const copy = form.querySelector('.cd-part:not([hidden]) .cd-passage-copy');
     const selection = window.getSelection();
-    if (!selection?.rangeCount || selection.isCollapsed) return;
-    const range = selection.getRangeAt(0);
-    if (!copy.contains(range.startContainer) || !copy.contains(range.endContainer)) return;
+    if (!selection?.rangeCount || selection.isCollapsed || !selection.toString().trim() ||
+        !copy?.contains(selection.anchorNode) || !copy.contains(selection.focusNode)) return hide();
+    selectedRange = selection.getRangeAt(0).cloneRange();
+    const bounds = selectedRange.getBoundingClientRect();
+    const first = selectedRange.getClientRects()[0] || bounds;
+    palette.hidden = false;
+    const width = palette.offsetWidth;
+    const height = palette.offsetHeight;
+    palette.style.left = Math.max(8, Math.min(innerWidth - width - 8, first.left + first.width / 2 - width / 2)) + 'px';
+    palette.style.top = Math.max(8, Math.min(innerHeight - height - 8,
+      first.top >= height + 12 ? first.top - height - 8 : bounds.bottom + 8)) + 'px';
+  }
+  document.addEventListener('selectionchange', show, options);
+  form.addEventListener('scroll', hide, { ...options, capture: true });
+  window.addEventListener('resize', hide, options);
+  palette.addEventListener('pointerdown', event => event.preventDefault());
+  palette.addEventListener('click', event => {
+    const button = event.target.closest('[data-highlight-color]');
+    if (!button || !selectedRange || selectedRange.collapsed || !selectedRange.startContainer.isConnected) return;
     const mark = document.createElement('mark');
-    mark.append(range.extractContents());
-    range.insertNode(mark);
-    selection.removeAllRanges();
-  };
+    mark.className = button.dataset.highlightColor;
+    mark.append(selectedRange.extractContents());
+    selectedRange.insertNode(mark);
+    window.getSelection().removeAllRanges();
+    if (event.detail === 0) mark.closest('.cd-passage').focus({ preventScroll: true });
+    hide();
+  });
+  form.addEventListener('keydown', event => {
+    if (palette.hidden) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (palette.contains(document.activeElement)) form.querySelector('.cd-part:not([hidden]) .cd-passage').focus();
+      window.getSelection().removeAllRanges();
+      hide();
+    } else if (event.key === 'Tab' && !event.shiftKey && !palette.contains(document.activeElement)) {
+      event.preventDefault();
+      palette.querySelector('button').focus({ preventScroll: true });
+    }
+  });
   form.querySelector('[data-clear-highlight]').onclick = () => {
     const copy = form.querySelector('.cd-part:not([hidden]) .cd-passage-copy');
     copy.querySelectorAll('mark').forEach(mark => mark.replaceWith(...mark.childNodes));
     copy.normalize();
+    window.getSelection().removeAllRanges();
+    hide();
   };
-  if (!result) startReadingTimer(form, assignment, answerCount);
+  closeReadingTools = () => events.abort();
+  return hide;
 }
 
-function startReadingTimer(form, assignment, answerCount) {
+function openCdReading(assignment, result) {
+  const checks = result ? new Map((result.checks || []).map(check => [check.number, check])) : null;
+  const summary = result ? '<div class="notice cd-score" role="status"><strong>Submitted score</strong><span>' +
+    esc(score(result, assignment)) + (result.band === null ? '' : ' · ' + result.raw + ' / ' + assignment.questions) +
+    '</span></div>' : '';
+  let answerCount = 0;
+  const partNumbers = [];
+  const sections = assignment.cd.map((section, index) => {
+    partNumbers.push(section.groups.flatMap(group => group.numbers));
+    return '<section class="cd-part" ' + (index ? 'hidden' : '') + '>' +
+      '<div class="cd-passage" tabindex="0" aria-label="Reading passage"><h3>' + esc(section.title) +
+      '</h3><div class="cd-passage-copy">' + esc(section.passage) + '</div></div>' +
+      '<div class="cd-questions" tabindex="0" aria-label="Questions">' + section.groups.map(group => {
+        const markup = renderCdGroup(group, answerCount, checks);
+        answerCount += group.numbers.length;
+        return markup;
+      }).join('') + '</div></section>';
+  }).join('');
+  let answerIndex = 0;
+  const parts = partNumbers.map((numbers, index) => '<div class="cd-nav-part">' +
+    '<button type="button" class="cd-part-link" data-cd-part="' + index + '">Part ' + (index + 1) +
+    ' <span data-cd-count>0 of ' + numbers.length + '</span></button>' +
+    '<div class="cd-number-strip" aria-label="Part ' + (index + 1) + ' questions">' +
+    numbers.map(number => '<button type="button" class="cd-number" data-cd-number="' + number +
+      '" data-answer-index="' + answerIndex++ + '" aria-label="Question ' + number + '">' + number + '</button>').join('') +
+    '</div></div>').join('');
+  const tag = result ? 'div' : 'form';
+  const timer = result ? '' : '<div class="cd-timer"><span class="cd-time"><span>Time remaining</span>' +
+    '<strong data-reading-time>—</strong></span><button type="button" class="btn light" data-reading-pause>Start or reopen test</button>' +
+    '<span class="help" data-reading-status role="status">The timer runs until you pause or submit.</span></div>';
+  const jump = '<nav class="cd-jump" aria-label="Jump within passage">' +
+    '<button type="button" class="btn light" data-cd-jump="passage">Read passage</button>' +
+    '<button type="button" class="btn light" data-cd-jump="questions">Go to questions</button></nav>';
+  const palette = '<div class="cd-highlight-palette" role="group" aria-label="Highlight color" hidden>' +
+    readingHighlights.map((name, index) => '<button type="button" class="cd-color-' + index + '" data-highlight-color="cd-color-' +
+      index + '" aria-label="Highlight ' + name.toLowerCase() + '" title="' + name + '"></button>').join('') + '</div>';
+  openModal(assignment.title, '<' + tag + ' class="cd-test">' + summary +
+    '<div class="cd-toolbar">' + timer + jump + '</div><div class="cd-tools">' +
+    '<a class="cd-telegram btn light" href="https://t.me/walker_ielts" target="_blank" rel="noopener">' + providerIcons.telegram + 'Walker IELTS</a>' +
+    '<div class="cd-utility"><label>Text size<select name="text-size"><option value="standard">Standard</option><option value="large">Large</option></select></label>' +
+    '<button type="button" class="btn light" data-clear-highlight>Clear highlights</button></div></div>' + sections +
+    '<footer class="cd-exam-footer"><div class="cd-navigation"><nav class="cd-parts" aria-label="Parts and questions">' + parts +
+    '</nav><div class="cd-part-arrows"><button type="button" class="btn light" data-cd-step="-1" aria-label="Previous part" title="Previous part">' +
+    icon('next', 16) + '</button><button type="button" class="btn light" data-cd-step="1" aria-label="Next part" title="Next part">' +
+    icon('next', 16) + '</button></div></div>' +
+    (result ? '' : '<div class="cd-submit"><span class="cd-progress" role="status">0 / ' + answerCount + ' answered</span>' +
+      submitButton('Submit assignment') + '</div>') + '</footer>' + palette + '</' + tag + '>', true);
+  modal.classList.add('cd-exam');
+  const form = modal.querySelector('.cd-test');
+  const panels = [...form.querySelectorAll('.cd-part')];
+  const partLinks = [...form.querySelectorAll('[data-cd-part]')];
+  const numberButtons = [...form.querySelectorAll('[data-cd-number]')];
+  const steps = [...form.querySelectorAll('[data-cd-step]')];
+  const hideHighlight = bindReadingHighlights(form);
+  let activePart = 0;
+  function select(part) {
+    if (part < 0 || part >= panels.length) return;
+    activePart = part;
+    hideHighlight();
+    window.getSelection().removeAllRanges();
+    panels.forEach((panel, index) => { panel.hidden = index !== part; });
+    partLinks.forEach((button, index) => {
+      button.setAttribute('aria-pressed', String(index === part));
+      button.nextElementSibling.hidden = index !== part;
+    });
+    steps[0].disabled = part === 0;
+    steps[1].disabled = part === panels.length - 1;
+  }
+  select(0);
+  for (const button of partLinks) button.onclick = () => select(Number(button.dataset.cdPart));
+  for (const button of steps) button.onclick = () => {
+    select(activePart + Number(button.dataset.cdStep));
+    if (button.disabled) partLinks[activePart].focus();
+  };
+  function jumpTo(target) {
+    target.scrollIntoView({ block: 'start', inline: 'nearest' });
+    target.focus({ preventScroll: true });
+  }
+  for (const button of form.querySelectorAll('[data-cd-jump]')) {
+    button.onclick = () => jumpTo(panels[activePart].querySelector('.cd-' + button.dataset.cdJump));
+  }
+  function setCurrent(number) {
+    for (const button of numberButtons) {
+      if (button.dataset.cdNumber === number) button.setAttribute('aria-current', 'location');
+      else button.removeAttribute('aria-current');
+    }
+  }
+  for (const button of numberButtons) button.onclick = () => {
+    const number = button.dataset.cdNumber;
+    jumpTo(panels[activePart].querySelector('[data-question="' + number + '"]'));
+    setCurrent(number);
+  };
+  form.addEventListener('focusin', event => {
+    const row = event.target.closest('[data-question]');
+    if (row) setCurrent(row.dataset.question);
+  });
+  form.querySelector('[name=text-size]').onchange = event => form.classList.toggle('cd-large', event.target.value === 'large');
+
+  function updateNumbers(answers) {
+    const answered = button => result ? checks.get(Number(button.dataset.cdNumber))?.answer : answers[Number(button.dataset.answerIndex)];
+    for (const button of numberButtons) {
+      const done = Boolean(answered(button)?.trim());
+      button.classList.toggle('cd-answered', done);
+      button.setAttribute('aria-label', 'Question ' + button.dataset.cdNumber + (done ? ', answered' : ', unanswered'));
+    }
+    partLinks.forEach((button, index) => {
+      const count = [...button.nextElementSibling.children].filter(item => item.classList.contains('cd-answered')).length;
+      button.querySelector('[data-cd-count]').textContent = count + ' of ' + partNumbers[index].length;
+    });
+  }
+  updateNumbers([]);
+  if (!result) startReadingTimer(form, assignment, answerCount, updateNumbers);
+}
+
+function startReadingTimer(form, assignment, answerCount, updateNumbers) {
   const endpoint = 'assignments/' + assignment.id;
   const pause = form.querySelector('[data-reading-pause]');
   const clock = form.querySelector('[data-reading-time]');
   const status = form.querySelector('[data-reading-status]');
   const progress = form.querySelector('.cd-progress');
   const submit = form.querySelector('[type=submit]');
-  const protectedAreas = form.querySelectorAll('.cd-jump,.cd-tools,.cd-tabs,.cd-part');
+  const protectedAreas = form.querySelectorAll('.cd-jump,.cd-tools,.cd-navigation,.cd-part,.cd-highlight-palette');
   let state;
   let deadline;
   let busy = false;
@@ -1121,7 +1233,9 @@ function startReadingTimer(form, assignment, answerCount) {
     return Array.from({ length: answerCount }, (_, index) => data.get('cd-answer-' + index) || '');
   };
   const updateProgress = () => {
-    progress.textContent = answers().filter(answer => answer.trim()).length + ' / ' + answerCount + ' answered';
+    const values = answers();
+    progress.textContent = values.filter(answer => answer.trim()).length + ' / ' + answerCount + ' answered';
+    updateNumbers(values);
   };
 
   async function finish() {
@@ -1359,6 +1473,8 @@ modal.addEventListener('cancel', event => {
 });
 modal.addEventListener('close', () => {
   if (modal.open) return;
+  closeReadingTools?.();
+  closeReadingTools = undefined;
   confirmDialogClose = undefined;
   if (!user) return;
   const route = readRoute();
